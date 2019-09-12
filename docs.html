@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Superpowered Web Audio JavaScript and WebAssembly SDK Documentation</title>
+    <link rel="stylesheet" href="docs_js_css/main.css" />
+    <link rel="stylesheet" href="docs_js_css/prism.css" />
+</head>
+<body id="top">
+<main>
+
+<h1>Superpowered Web Audio JavaScript and WebAssembly SDK</h1>
+
+<p>Welcome to high performance, interactive audio in the browser built on Superpowered Audio + Web Audio + WebAssembly.</p>
+<p>WebAssembly is a new, rapidly evolving technology with great momentum. It's promise to bring interactive, low latency multi-media capabilities to the browser.</p>
+<p>In short: what needed to be done in a native app, will now be possible in the browser.</p>
+<p>Our Superpowered implementation is not dumbed down and makes no compromises: audio quality is identical to our &quot;native&quot; platform versions. All data processing is performed in WebAssembly for high performance, and typical performance is less than 10% slower vs Superpowered native performance (only because WebAssembly SIMD features are not ready for prime-time yet).</p>
+<p>Example measurement: Superpowered Reverb 0.033ms vs. 0.03ms for 128 frames on the highest spec 2017 Retina Macbook Pro.</p>
+<p>We're shipping our Superpowerered Javascript/WebAssembly SDK with a new documentation approach: <em>all features are documented by pseudo-examples</em>. This is a JavaScript API, to be primarily used with Web Audio, ScriptProcessorNode, Worklet and Audio Worklet. The library is also available in Emscripten Bitcode format for custom WASM builds.</p>
+<p>Browser support: official public stable versions of all major web browsers, including desktop and mobile variants (iOS, Android), such as Chrome, Safari, Firefox and Opera. The only exception is Microsoft Edge, that requires developer build version 74 minimum.</p>
+
+<div id="tocbox"></div>
+
+<h2>Basics</h2>
+
+<h3>Initialization</h3>
+
+<pre><code class="language-js">
+// Initializes Superpowered. Returns with a Superpowered instance.
+// Always call this once in your main scope (main thread).
+// Worklets: if using Superpowered in a Worklet, call this in the Worklet as well.
+// Audio Worklets: do not call this in an Audio Worklet.
+var Superpowered = SuperpoweredModule({
+    licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate', // your license key
+    enableAudioAnalysis: true,          // Enables Analyzer, Waveform and BandpassFilterbank.
+    enableFFTAndFrequencyDomain: false, // Enables FFTComplex, FFTReal and PolarFFT.
+    enableAudioTimeStretching: false,   // Enables TimeStretching.
+    enableAudioEffects: false,          // Enables all effects and the Spatializer.
+
+    onReady: function() {
+        // stuff you run after Superpowered is initialized
+    }
+});
+</code></pre>
+
+<h3>Linear Memory</h3>
+
+<p>Most Superpowered APIs work on arrays of floating point numbers representing PCM audio. A simple buffer containing audio input for example. But WebAssembly can not access traditional JavaScript Float32Arrays directly and efficiently.</p>
+<p>In the low-level memory model of WebAssembly, memory is represented as a contiguous range of untyped bytes called Linear Memory, which is a standard ArrayBuffer.
+<p>Memory can be &quot;allocated&quot; in the Linear Memory, returning with a pointer to the allocated region. This pointer can be used to represent an array of data, such as an array of floating point numbers.</p>
+<p>The following example demonstrates how to allocate a region in the Linear Memory and how to create a Float32Array &quot;view&quot; of this region with standard WebAssembly JavaScript:</p>
+
+<pre><code class="language-js">
+let length = 128;                  // We want the buffer to store 128 floating point numbers.
+let pointer = _malloc(length * 4); // A floating point number is 4 bytes, therefore we allocate length * 4 bytes of memory.
+// You can use "pointer" to pass audio to most Superpowered APIs.
+
+// Maybe we want to directly manipulate this data from JavaScript as well. Let's create a Float32Array view of this region.
+let arrayView = new Float32Array(
+    Superpowered.HEAPF32.buffer,   // Standard WebAssembly Module access to the Linear Memory buffer as floating point numbers.
+    pointer,                       // The allocated region.
+    length                         // The length of the region.
+);
+// Now this is possible:
+arrayView[0] = 0.5;
+
+// Deallocate the region when we don't need it anymore.
+_free(pointer);
+</code></pre>
+
+<p>The Superpowered module offers some APIs to make this allocation process a little bit easier:</p>
+
+<pre><code class="language-js">
+// Total memory consumption in this example: 256 * 4 = 1024 bytes.
+let someBuffer = Superpowered.createFloatArray(256);
+
+someBuffer.pointer;        // Getting the linear memory index (pointer).
+someBuffer.length;         // Getting the length of the buffer.
+someBuffer.array[0] = 0.5; // Accessing the buffer as a Float32Array.
+
+Superpowered.destroyFloatArray(someBuffer); // Deallocate everything.
+</code></pre>
+
+<h3>Web Audio</h3>
+
+<p>Visit the effects example project to see these in context for better understanding.</p>
+
+<pre><code class="language-js">
+// Returns with a standard AudioContext.
+// This function was made to help with browser-specific quirks.
+// Reference: https://developer.mozilla.org/en-US/docs/Web/API/AudioContext
+var audioContext = Superpowered.getAudioContext(
+    44100 // The sample rate to be used by the AudioContext.
+);
+
+// Prompts the user for permission to use a media input (typically the microphone) with an audio track and no video tracks. Has no return value.
+// This function was made to help with browser-specific quirks.
+// Reference https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+Superpowered.getUserMediaForAudio(
+    {  // navigator.mediaDevices.getUserMedia constraints
+        'echoCancellation': false
+    },
+    function(stream) {
+        // Called when the user provided permission (for the microphone).
+        // stream is a standard MediaStream object:
+        // https://developer.mozilla.org/en-US/docs/Web/API/MediaStream
+    },
+    function(error) {
+        // Called when the user refused the (microphone) permission.
+        // Visit the reference above on what error represents.
+    }
+);
+
+// Creates an Audio Worklet (for new browsers) or an audio processing ScriptProcessorNode (for older browsers).
+// This function was made to help with browser-specific quirks and to properly initialize Superpowered in an Audio Worklet context.
+var myAudioNode = null;
+Superpowered.createAudioNode(
+    audioContext,                    // The standard AudioContext instance.
+    '/example_effects/processor.js', // The JavaScript module source of the node.
+    'MyProcessor',                   // The registered processor name.
+    function(newNode) {
+        // Runs after the audio node is created.
+        // newNode is a standard AudioNode or a ScriptProcessorNode.
+        myAudioNode = newNode;
+    },
+    function(message) {
+        // Runs in the main scope (main thread) when the audio node sends a message.
+        // message is a standard JavaScript object.
+
+        // Let's send some data to the audio scope (audio thread).
+        // This method accepts any object (string, array, etc.) as it's single input parameter.
+        myAudioNode.sendMessageToAudioScope({
+            someText: "Hey!"
+        });
+    }
+);
+</code></pre>
+
+<h3>AudioWorkletProcessor</h3>
+
+<p>The easiest way to use Superpowered features in a Web Audio AudioNode is the SuperpoweredModule.AudioWorkletProcessor class.</p>
+<p>It can be created by createAudioNode (see the example above) and should be loaded from a dedicated .js file, because it's a JS module in modern browsers.</p>
+
+<pre><code class="language-js">
+class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
+    onReady() {
+        // Runs after the constructor. This is "your" constructor basically.
+    }
+    onMessageFromMainScope(message) {
+        // Runs when a message (data) is received from the main scope (main thread).
+
+        // Let's figure out the samplerate we're working with.
+        let samplerate = this.Superpowered.samplerate;
+
+        // Let's send some data back to the main scope (main thread).
+        // This method accepts any object (string, array, etc.) as it's single input parameter.
+        this.sendMessageToAudioScope({
+            someText: "Got your message!",
+            hz: samplerate
+        });
+    }
+    processAudio(inputBuffer, outputBuffer, buffersize, parameters) {
+        // The audio processing callback running in the audio thread.
+
+        // buffersize is the current number of frames, typically 128.
+
+        // parameters is a map of string keys and associated Float32Arrays, as standardized by W3:
+        // https://www.w3.org/TR/webaudio/#AudioNode-methods (see the process() method)
+        // parameters are not very useful here, because they don't work for older browsers with ScriptProcessorNode.
+        // Superpowered objects are automatically smoothing parameter changes as required, so there is no need to use the AudioParam features of Web Audio.
+        // Use sendMessageToAudioScope() to send parameters instead, as you can find in the example projects.
+
+        // inputBuffer and outputBuffer contain stereo interleaved 32-bit floating point audio.
+        // They have both direct WASM linear memory index (pointer) access and JavaScript Float32Array access.
+
+        // Typically, Superpowered objects require direct WASM linear memory indexes (pointers) for audio input and/or output:
+        SomeSuperpoweredObject.process(inputBuffer.pointer, outputBufer.pointer, buffersize);
+
+        // Direct JavaScript Float32Array access to audio input and/or output:
+        let firstInputSampleLeft = inputBuffer.array[0];
+        let firstInputSampleRight = inputBuffer.array[1];
+        outputBuffer.array[0] = firstInputSampleLeft;
+        outputBuffer.array[1] = firstInputSampleRight;
+    }
+}
+</code></pre>
+
+<h2>Simple Features</h2>
+
+<h3>Functions</h3>
+
+<p>Fast utility functions for transforming audio.</p>
+
+<pre><code class="language-js">
+// Applies volume on a single stereo interleaved buffer. Has no return value.
+Superpowered.Volume(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can be equal to input (in-place processing).
+    0.1,    // Volume for the first frame.
+    0.9     // Volume for the last frame. Volume will be smoothly calculated between the first and last frames.
+    128     // The number of frames to process.
+);
+
+// Applies volume on a single stereo interleaved buffer. Has no return value.
+Superpowered.ChangeVolume(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can be equal to input (in-place processing).
+    0.1,    // Volume for the first frame.
+    0.02    // Change volume by this amount for every frame. In this example the first frame will be multiplied by 0.1, the second by 0.12 and so on.
+    128     // The number of frames to process.
+);
+
+// Applies volume on a single stereo interleaved buffer and adds it to the audio in the output buffer. Has no return value.
+Superpowered.VolumeAdd(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output.
+    0.1,    // Volume for the first frame.
+    0.9     // Volume for the last frame. Volume will be smoothly calculated between the first and last frames.
+    128     // The number of frames to process.
+);
+
+// Applies volume on a single stereo interleaved buffer and adds it to the audio in the output buffer. Has no return value.
+Superpowered.ChangeVolumeAdd(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can be equal to input (in-place processing).
+    0.1,    // Volume for the first frame.
+    0.02    // Change volume by this amount for every frame. In this example the first frame will be multiplied by 0.1, the second by 0.12 and so on.
+    128     // The number of frames to process.
+);
+
+// Returns the peak absolute value. Useful for metering.
+let peak = Superpowered.Peak(
+    input, // Pointer to floating point numbers.
+    256,   // The number of values to process. For a stereo input this value should be 2 * numberOfFrames. Must be a multiply of 8.
+);
+
+// Converts 8-bit audio to 32-bit floating point. Has no return value.
+Superpowered.CharToFloat(
+    input,  // Pointer to signed bytes. 8-bit input.
+    output, // Pointer to floating point numbers. 32-bit output.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Converts 8-bit audio to 32-bit floating point. Has no return value.
+Superpowered.FloatToChar(
+    input,  // Pointer to floating point numbers. 32-bit input.
+    output, // Pointer to signed bytes. 8-bit output.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Converts 24-bit audio to 32-bit floating point. Has no return value.
+Superpowered.24bitToFloat(
+    input,  // Input buffer pointer.
+    output, // Pointer to floating point numbers. 32-bit output.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Converts 32-bit floating point audio to 24-bit. Has no return value.
+Superpowered.FloatTo24bit(
+    input,  // Pointer to floating point numbers. 32-bit input.
+    output, // Output buffer pointer.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Converts 32-bit integer audio to 32-bit floating point. Has no return value.
+Superpowered.IntToFloat(
+    input,  // Pointer to integer numbers. 32-bit input.
+    output, // Pointer to floating point numbers. 32-bit output.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Converts 32-bit floating point audio to 32-bit integer. Has no return value.
+Superpowered.FloatToInt(
+    input,  // Pointer to floating point numbers. 32-bit input.
+    output, // Pointer to integer numbers. 32-bit output.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Converts 32-bit float input to 16-bit signed integer output. Has no return value.
+Superpowered.FloatToShortInt(
+    input,  // Pointer to floating point numbers. 32-bit input.
+    output, // Pointer to short integer numbers. 16-bit output.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Converts two 32-bit mono float input channels to stereo interleaved 16-bit signed integer output. Has no return value.
+Superpowered.FloatToShortIntInterleave(
+    inputLeft,  // Pointer to floating point numbers. 32-bit input for the left side. Should be numberOfFrames + 8 big minimum.
+    inputRight, // Pointer to floating point numbers. 32-bit input for the right side. Should be numberOfFrames + 8 big minimum.
+    output,     // Pointer to short integer numbers. Stereo interleaved 16-bit output. Should be numberOfFrames * 2 + 16 big minimum.
+    128         // The number of frames to process.
+);
+
+// Converts stereo interleaved 16-bit signed integer input to stereo interleaved 32-bit float output, and provides peak measurement. Has no return value.
+Superpowered.ShortIntToFloat(
+    input,  // Pointer to short integer numbers. Stereo interleaved 16-bit input. Should be numberOfFrames + 8 big minimum.
+    output, // Pointer to floating point numbers. Stereo interleaved 32-bit output. Should be numberOfFrames + 8 big minimum.
+    128,    // The number of frames to process.
+    peaks   // Pointer to two floating point numbers. Peak value result (left, right).
+);
+
+// Converts 16-bit signed integer input to 32-bit float output. Has no return value.
+Superpowered.ShortIntToFloat(
+    input,  // Pointer to short integer numbers. Stereo interleaved 16-bit input.
+    output, // Pointer to floating point numbers. Stereo interleaved 32-bit output.
+    128,    // The number of frames to process.
+    2       // The number of channels.
+);
+
+// Makes an interleaved stereo output from two mono input channels. Has no return value.
+Superpowered.Interleave(
+    left,   // Pointer to floating point numbers. Mono input for left channel.
+    right,  // Pointer to floating point numbers. Mono input for right channel.
+    output, // Pointer to floating point numbers. Stereo interleaved output.
+    128     // The number of frames to process.
+);
+
+// Makes an interleaved stereo output from two mono input channels and adds the result to the audio in the output buffer. Has no return value.
+Superpowered.InterleaveAdd(
+    left,   // Pointer to floating point numbers. Mono input for left channel.
+    right,  // Pointer to floating point numbers. Mono input for right channel.
+    output, // Pointer to floating point numbers. Stereo interleaved output.
+    128     // The number of frames to process.
+);
+
+// Makes an interleaved output from two input channels and measures the volume. Has no return value.
+Superpowered.InterleaveAndGetPeaks(
+    left,   // Pointer to floating point numbers. Mono input for left channel.
+    right,  // Pointer to floating point numbers. Mono input for right channel.
+    output, // Pointer to floating point numbers. Stereo interleaved output.
+    128,    // The number of frames to process.
+    peaks   // Pointer to two floating point numbers. Peak value result (left, right).
+);
+
+// Deinterleaves an interleaved stereo input to two mono output channels. Has no return value.
+Superpowered.DeInterleave(
+    input, // Pointer to floating point numbers. Stereo interleaved input.
+    left,  // Pointer to floating point numbers. Mono output for left channel.
+    right, // Pointer to floating point numbers. Mono output for right channel.
+    128    // The number of frames to process.
+);
+
+// Deinterleaves an interleaved stereo input to two mono output channels and multiplies the output (gain). Has no return value.
+Superpowered.DeInterleaveMultiply(
+    input, // Pointer to floating point numbers. Stereo interleaved input.
+    left,  // Pointer to floating point numbers. Mono output for left channel.
+    right, // Pointer to floating point numbers. Mono output for right channel.
+    128,   // The number of frames to process.
+    2.0    // Multiply each output sample with this value.
+);
+
+// Deinterleaves an interleaved stereo input and adds the results to the two mono output channels. Has no return value.
+Superpowered.DeInterleaveAdd(
+    input, // Pointer to floating point numbers. Stereo interleaved input.
+    left,  // Pointer to floating point numbers. Mono output for left channel.
+    right, // Pointer to floating point numbers. Mono output for right channel.
+    128    // The number of frames to process.
+);
+
+// Deinterleaves an interleaved stereo input to two mono output channels, multiplies the result (gain) and and adds the results to the two mono output channels. Has no return value.
+Superpowered.DeInterleaveMultiplyAdd(
+    input, // Pointer to floating point numbers. Stereo interleaved input.
+    left,  // Pointer to floating point numbers. Mono output for left channel.
+    right, // Pointer to floating point numbers. Mono output for right channel.
+    128,   // The number of frames to process.
+    2.0    // Multiply each output sample with this value.
+);
+
+// Checks if the audio samples has non-valid values, such as infinity or NaN (not a number). Returns with true or false.
+let invalid = Superpowered.HasNonFinite(
+    buffer,       // Pointer to floating point numbers to check.
+    numberOfItems // Number of items in the buffer. Please note, this is NOT numberOfFrames. You need to provide the number of numbers in the buffer.
+);
+
+// Makes mono output from stereo interleaved input. Has no return value.
+Superpowered.StereoToMono(
+    input,  // Pointer to floating point numbers. Stereo interleaved input.
+    output, // Pointer to floating point numbers. Mono output.
+    0,      // Gain of the first sample on the left channel.
+    1,      // Gain for the last sample on the left channel. Gain will be smoothly calculated between start end end. This example shows a fade-in (0 to 1).
+    0,      // Gain of the first sample on the right channel.
+    1,      // Gain for the last sample on the right channel. Gain will be smoothly calculated between start end end. This example shows a fade-in (0 to 1).
+    128     // The number of frames to process.
+);
+
+// Crossfades two mono input channels into a mono output. Has no return value.
+Superpowered.CrossMono(
+    inputA, // Pointer to floating point numbers. First mono input.
+    inputB, // Pointer to floating point numbers. Second mono input.
+    output, // Pointer to floating point numbers. Mono output.
+    0,      // Gain of the first sample on the first input.
+    0.9,    // Gain for the last sample on the first input. Gain will be smoothly calculated between start end end.
+    0.9,    // Gain of the first sample on the second input.
+    0,      // Gain for the last sample on the second input. Gain will be smoothly calculated between start end end.
+    128     // The number of frames to process.
+);
+
+// Crossfades two stereo inputs into a stereo output. Has no return value.
+Superpowered.CrossStereo(
+    inputA, // Pointer to floating point numbers. Interleaved stereo input (first).
+    inputB, // Pointer to floating point numbers. Interleaved stereo input (second).
+    output, // Pointer to floating point numbers. Interleaved stereo output.
+    0,      // Gain of the first sample on the first input.
+    0.9,    // Gain for the last sample on the first input. Gain will be smoothly calculated between start end end.
+    0.9,    // Gain of the first sample on the second input.
+    0,      // Gain for the last sample on the second input. Gain will be smoothly calculated between start end end.
+    128     // The number of frames to process.
+);
+
+// Adds the values in input to the values in output. Has no return value.
+// output[n] += input[n]
+Superpowered.Add1(
+    input,  // Pointer to floating point numbers. Input data.
+    output, // Pointer to floating point numbers. Output data.
+    256     // The length of input.
+);
+
+// Adds the values in two inputs to the values in output. Has no return value.
+// output[n] += inputA[n] + inputB[n]
+Superpowered.Add2(
+    inputA, // Pointer to floating point numbers. Input data.
+    inputB, // Pointer to floating point numbers. Input data.
+    output, // Pointer to floating point numbers. Output data.
+    256     // The length of input.
+);
+
+// Adds the values in four inputs to the values in output. Has no return value.
+// output[n] += inputA[n] + inputB[n] + inputC[n] + inputD[n]
+Superpowered.Add4(
+    inputA, // Pointer to floating point numbers. Input data.
+    inputB, // Pointer to floating point numbers. Input data.
+    inputC, // Pointer to floating point numbers. Input data.
+    inputD, // Pointer to floating point numbers. Input data.
+    output, // Pointer to floating point numbers. Output data.
+    256     // The length of input.
+);
+
+// Converts a stereo signal to mid-side. Has no return value.
+Superpowered.StereoToMidSide(
+    input,  // Pointer to floating point numbers. Interleaved stereo input.
+    output, // Pointer to floating point numbers. Mid-side interleaved output. Can be equal to input (in-place processing).
+    128     // The number of frames to process.
+);
+
+// Converts a mid-side signal to stereo. Has no return value.
+Superpowered.MidSideToStereo(
+    input,  // Pointer to floating point numbers. Mid-side interleaved input.
+    output, // Pointer to floating point numbers. Interleaved stereo output. Can be equal to input (in-place processing).
+    128     // The number of frames to process.
+);
+
+// Calculates the dot product of two vectors.
+let dotproduct = Superpowered.DotProduct(
+    inputA, // Pointer to floating point numbers. First input vector.
+    inputB, // Pointer to floating point numbers. Second input vector.
+    128     // Number of value pairs to process.
+);
+
+// Returns the current version of the Superpowered SDK.
+// The returned value is: major version * 10000 + minor version * 100 + revision
+// Example: 10402 means 1.4.2
+let version = Superpowered.Version();
+
+// Returns the frequency of a specific note.
+let hz = Superpowered.frequencyOfNote(
+    0 // The number of the note. Note 0 is the standard A note at 440 Hz.
+);
+</code></pre>
+
+<h3>FFT</h3>
+
+<p>Super fast FFT. Single threaded.</p>
+
+<pre><code class="language-js">
+// Complex in-place FFT. Has no return value.
+// Data packing is same as Apple's vDSP. Check the "Using Fourier Transforms" page of Apple's vDSP documentation ("Data Packing for Real FFTs").
+Superpowered.FFTComplex(
+    real, // Pointer to floating point numbers. Real part.
+    imag, // Pointer to floating point numbers. Imaginary part.
+    9,    // Log size. Should be between 4 and 12 (FFT sizes 16 - 4096).
+    true  // Forward (true) or inverse (false).
+);
+
+// Real in-place FFT. Has no return value.
+// Data packing is same as Apple's vDSP. Check the "Using Fourier Transforms" page of Apple's vDSP documentation ("Data Packing for Real FFTs").
+Superpowered.FFTReal(
+    real, // Pointer to floating point numbers. Real part.
+    imag, // Pointer to floating point numbers. Imaginary part.
+    9,    // Log size. Should be 5 - 13 (FFT sizes 32 - 8192).
+    true  // Forward (true) or inverse (false).
+);
+
+// Polar FFT. Has no return value.
+// Data packing is same as Apple's vDSP. Check the "Using Fourier Transforms" page of Apple's vDSP documentation ("Data Packing for Real FFTs").
+Superpowered.PolarFFT(
+    mag,   // Pointer to floating point numbers. Input: split real part. Output: magnitudes.
+    phase, // Pointer to floating point numbers. Input: split real part. Output: phases.
+    9,     // Should be 5 - 13 (FFT sizes 32 - 8192).
+    true,  // Forward (true) or inverse (false).
+    0      // Value of pi: The function can translate pi to any value (Google: the tau manifesto). Use 0 for pi.
+);
+</code></pre>
+
+<h3>StereoMixer</h3>
+
+<p>Mixes up to 4 stereo inputs. From the traditional mixer hardware point of view, every input and the output has dedicated metering, gain and pan controls.</p>
+<p>One instance allocates just a few bytes of memory, therefore combining multiple instances of the StereoMixer is the recommended way to support more than 4 channels.</p>
+
+<pre><code class="language-js">
+// Constructor. Has no additional parameters.
+let mixer = Superpowered.new('StereoMixer');
+
+// Gain per input channel, 8 values (2 per input). Default value for all: 1. Changes between consecutive process() calls are automatically smoothed.
+mixer.inputGain[2] = 0.5; // left side of the second input
+mixer.inputGain[3] = 0.5; // right side of the second input
+
+// Output gain. Default value for all: 1. Changes between consecutive process() calls are automatically smoothed.
+mixer.outputGain[0] = 0.9; // left side
+mixer.outputGain[1] = 0.8; // right side
+
+// Processes the audio. Has no return value.
+mixer.process(
+    input0, // Pointer to floating point numbers. 32-bit interleaved stereo input buffer for the first input. Can be null.
+    input1, // Pointer to floating point numbers. 32-bit interleaved stereo input buffer for the second input. Can be null.
+    input2, // Pointer to floating point numbers. 32-bit interleaved stereo input buffer for the third input. Can be null.
+    input3, // Pointer to floating point numbers. 32-bit interleaved stereo input buffer for the fourth input. Can be null.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output buffer.
+    128     // Number of frames to process. Must be an even number.
+);
+
+// The peak absolute audio volume per input channel, updated after every process() call, measured before any gain.
+let second_input_left_side = mixer.inputPeak[2];
+let second_input_right_side = mixer.inputPeak[3];
+
+// The peak absolute audio volume for the output, updated after every process() call.
+let output_left_side = mixer.outputPeak[0];
+let output_right_side = mixer.outputPeak[1];
+
+// Destructor (to free up memory).
+mixer.destruct();
+</code></pre>
+
+<h3>MonoMixer</h3>
+
+<p>Mixes up to 4 mono inputs. Every input and the output has individual gain control.</p>
+<p>One instance allocates just a few bytes of memory, therefore combining multiple instances of the MonoMixer is the recommended way to support more than 4 channels.</p>
+
+<pre><code class="language-js">
+// Constructor. Has no additional parameters.
+let mixer = Superpowered.new('MonoMixer');
+
+// Gain per input channel. Default value for all: 1. Changes between consecutive process() calls are automatically smoothed.
+mixer.inputGain[2] = 0.5; // third input
+
+// Gain for the output. Default value: 1. Changes between consecutive process() calls are automatically smoothed.
+mixer.outputGain = 2;
+
+// Mixes up to 4 mono inputs into a mono output. Has no return value.
+mixer.process(
+    input0, // Pointer to floating point numbers. 32-bit input buffer for the first input. Can be null.
+    input1, // Pointer to floating point numbers. 32-bit input buffer for the second input. Can be null.
+    input2, // Pointer to floating point numbers. 32-bit input buffer for the third input. Can be null.
+    input3, // Pointer to floating point numbers. 32-bit input buffer for the fourth input. Can be null.
+    output, // Pointer to floating point numbers. 32-bit output buffer.
+    128     // Number of frames to process. Must be a multiple of 4.
+);
+
+// Destructor (to free up memory).
+mixer.destruct();
+</code></pre>
+
+<h2>Audio Analysis</h2>
+
+<h3>Waveform</h3>
+
+<p>Provides waveform data in 150 points/sec resolution.</p>
+
+<pre><code class="language-js">
+// Constructor.
+let waveform = Superpowered.new('Waveform',
+    44100, // The sample rate of the audio input.
+    60     // The length in seconds of the audio input. It will not be able to process more audio than this. You can change this value in the process() method.
+);
+
+// Processes some audio. This method can be used in a real-time audio thread if lengthSeconds is -1. Has no return value.
+waveform.process(
+    input, // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    128,   // Number of frames to process.
+    -1     // If the audio input length may change, set this to the current length. Use -1 otherwise. If this value is not -1, this method can NOT be used in a real-time audio thread.
+);
+
+// Makes the result from the collected data. This method should NOT be used in a real-time audio thread, because it allocates memory. Has no return value.
+waveform.makeResult();
+
+waveform.peakWaveform; // 150 points/sec waveform data displaying the peak volume. Uint8Array. Each byte represents one "pixel". Available after calling makeResult().
+waveform.waveformSize; // The number of bytes in the peak, average, low, mid and high waveforms and notes.
+
+// To keep the array result after you destruct the waveform without an expensive memory copy, do this:
+let peakWaveform = waveform.peakWaveform;
+waveform.peakWaveform = null;
+
+// Destructor (to free up memory).
+waveform.destruct();
+</code></pre>
+
+<h3>BandpassFilterbank</h3>
+
+<p>Efficient bandpass filter bank for real-time zero latency frequency analysis. Each band is a separated bandpass filter with custom width and center frequency.</p>
+
+<pre><code class="language-js">
+// Constructor.
+let filterbank = Superpowered.new('BandpassFilterbank',
+    8,           // The number of bands. Must be a multiply of 8.
+    [ 100, 100, 100, 100, 100, 100, 100, 100 ], // Center frequencies of each band in Hz.
+    [ 1, 1, 1, 1, 1, 1, 1, 1 ],                 // Widths of each band in octave (1.0 is one octave, 1.0 / 12.0 is one halfnote).
+    44100,       // The initial sample rate in Hz.
+    0            // numGroups: for advanced use.
+                 // The filter bank can be set up with multiple frequency + width groups, then process() or processNoAdd() can be performed with one specific frequency + width group. For example, set up one group with wide frequency coverage for the 20-20000 Hz range and three additional groups for 20-200 Hz, 200-2000 Hz and 2000-20000 Hz. When processing with the wide group of 20-20000 Hz and the highest magnitude can be found at 1000 Hz, use the 200-2000 Hz group for the next process() or processNoAdd() call, so the filter bank will have a "focus" on a narrower range.
+                 // If numGroups > 0, then the number of frequencies and widths should be numGroups * numBands. Example: for numBands = 8 and numGroups = 2, provide 8 + 8 frequencies and 8 + 8 widths.
+);
+
+// Do this when the sample rate changes.
+filterbank.samplerate = 48000;
+
+// Processes the audio. Has no return value.
+// It will ADD to the current magnitude in bands (like bands[0] += 0.123), so you can "measure" the magnitude of each frequency for a longer period of time.
+// To calculate a result between 0 and 1 for multiple consecutive process() calls, divide each value in bands with the total number of frames passed to the consecutive process() calls.
+filterbank.process(
+    input, // Input pointer (audio in 32-bit floating point numbers, stereo, interleaved).
+    128,   // Number of frames to process.
+    0      // The group index for advanced "grouped" usage.
+);
+
+// Processes the audio. Has no return value.
+filterbank.processNoAdd(
+    input, // Input pointer (audio in 32-bit floating point numbers, stereo, interleaved).
+    128,   // Number of frames to process.
+    0      // The group index for advanced "grouped" usage.
+);
+
+// The magnitude of the frequency bands. Will be updated after each process() or processNoAdd() call.
+let band0_magnitude = filterbank.bands[0];
+
+// Sets all values of bands to 0. Has no return value.
+filterbank.resetBands();
+
+// Returns with the average volume of all audio passed to all previous process() or processNoAdd() calls.
+let averageVolume = filterbank.getAverageVolume();
+
+// Returns with the cumulated absolute value of all audio passed to all previous process() or processNoAdd() calls. Like you would add the absolute value of all audio samples together.
+let sumAudio = filterbank.getSumVolume();
+
+// Resets the sum and average volume value to start measurement anew. Has no return value.
+filterbank.resetSumAndAverageVolume();
+
+// Returns with the peak volume of all audio passed to all previous process() or processNoAdd() calls.
+let peakVolume = filterbank.getPeakVolume();
+
+// Resets the peak volume value to start measurement anew. Has no return value.
+filterbank.resetPeakVolume();
+
+// Destructor (to free up memory).
+filterbank.destruct();
+</code></pre>
+
+<h3>Analyzer</h3>
+
+<p>Performs bpm and key detection, loudness/peak analysis. Provides compact waveform data (150 points/sec and 1 point/sec resolution), beatgrid information.</p>
+
+<pre><code class="language-js">
+// Constructor.
+let analyzer = Superpowered.new('Analyzer',
+    44100, // The sample rate of the audio input.
+    60     // The length in seconds of the audio input. The analyzer will not be able to process more audio than this. You can change this value in the process() method.
+);
+
+// Processes some audio. This method can be used in a real-time audio thread if lengthSeconds is -1. Has no return value.
+analyzer.process(
+    input, // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    128,   // Number of frames to process.
+    -1     // If the audio input length may change, set this to the current length. Use -1 otherwise. If this value is not -1, this method can NOT be used in a real-time audio thread.
+);
+
+// Makes results from the collected data. This method should NOT be used in a real-time audio thread, because it allocates memory. Has no return value.
+analyzer.makeResults(
+    60,   // Detected bpm will be more than or equal to this. Recommended value: 60.
+    200,  // Detected bpm will be less than or equal to this. Recommended value: 200.
+    0,    // If you know the bpm set it here. Use 0 otherwise.
+    0,    // Provides a "hint" for the analyzer with this. Use 0 otherwise.
+    true, // True: calculate beatgridStartMs. False: save some CPU with not calculating it.
+    0,    // Provides a "hint" for the analyzer with this. Use 0 otherwise.
+    true, // True: make overviewWaveform. False: save some CPU and memory with not making it.
+    true, // True: make the low/mid/high waveforms. False: save some CPU and memory with not making them.
+    true  // True: calculate keyIndex. False: save some CPU with not calculating it.
+);
+
+analyzer.peakDb;             // Peak volume in decibels. Available after calling makeResults().
+analyzer.averageDb;          // Average volume in decibels. Available after calling makeResults().
+analyzer.loudpartsAverageDb; // The average volume of the "loud" parts in decibel. (Quiet parts excluded.) Available after calling makeResults().
+analyzer.bpm;                // Beats per minute. Available after calling makeResults().
+analyzer.beatgridStartMs;    // Where the beatgrid starts (first beat) in milliseconds. Available after calling makeResults().
+analyzer.keyIndex;           // The dominant key (chord) of the music. 0..11 are major keys from A to G#, 12..23 are minor keys from A to G#. Check the static constants in this header for musical, Camelot and Open Key notations.
+
+analyzer.waveformSize;       // The number of bytes in the peak, average, low, mid and high waveforms and notes.
+analyzer.peakWaveform;       // 150 points/sec waveform data displaying the peak volume. Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
+analyzer.averageWaveform;    // 150 points/sec waveform data displaying the average volume. Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
+analyzer.lowWaveform;        // 150 points/sec waveform data displaying the low frequencies (below 200 Hz). Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
+analyzer.midWaveform;        // 150 points/sec waveform data displaying the mid frequencies (200-1600 Hz). Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
+analyzer.highWaveform;       // 150 points/sec waveform data displaying the high frequencies (above 1600 Hz). Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
+analyzer.notes;              // 150 points/sec data displaying the bass and mid keys. Upper 4 bits are the bass notes 0 to 11, lower 4 bits are the mid notes 0 to 11 (C, C#, D, D#, E, F, F#, G, G#, A, A#, B). The note value is 12 means "unknown note due low volume". Available after calling makeResults().
+
+analyzer.overviewSize;       // The number bytes in overviewWaveform.
+analyzer.overviewWaveform;   // 1 point/sec waveform data displaying the average volume in decibels. Useful for displaying the overall structure of a track. Int8Array. Each byte has the value of -128 to 0, in decibels.
+
+// To keep an array result after you destruct the analyzer without an expensive memory copy, do this:
+let peakWaveform = analyzer.peakWaveform;
+analyzer.peakWaveform = null;
+
+// Destructor (to free up memory).
+analyzer.destruct();
+
+// Helper arrays to display keyIndex in musical, Camelot and Open Key formats:
+let musicalChordNames = [
+    "A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", /// major
+    "Am", "A#m", "Bm", "Cm", "C#m", "Dm", "D#m", "Em", "Fm", "F#m", "Gm", "G#m" /// minor
+];
+
+let camelotChordNames = [
+    "11B", "6B", "1B", "8B", "3B", "10B", "5B", "12B", "7B", "2B", "9B", "4B", /// major
+    "8A", "3A", "10A", "5A", "12A", "7A", "2A", "9A", "4A", "11A", "6A", "1A" /// minor
+];
+
+let openkeyChordNames = [
+    "4d", "11d", "6d", "1d", "8d", "3d", "10d", "5d", "12d", "7d", "2d", "9d", /// major
+    "1m", "8m", "3m", "10m", "5m", "12m", "7m", "2m", "9m", "4m", "11m", "6m" /// minor
+];
+</code></pre>
+
+<h2>Effects</h2>
+
+<h3>Three Band EQ</h3>
+
+<p>Classic three-band equalizer with unique characteristics and total kills.</p>
+<p>It doesn't allocate any internal buffers and needs just a few bytes of memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let eq = Superpowered.new('ThreeBandEQ',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+eq.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+eq.enable = true;
+
+// Low gain. Read-write. 1 is "flat", 2 is +6db. Kill is enabled under -40 db (0.01). Default: 1. Limits: 0 and 8.
+eq.low = 0.5;
+eq.mid = 1;    // Mid gain. See low for details.
+eq.high = 1.2; // High gain. See low for details.
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = eq.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendation for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+eq.destruct();
+</code></pre>
+
+<h3>Bitcrusher</h3>
+
+<p>Bit crusher with adjustable frequency and bit depth. Simulates an old-school digital sound card. It doesn't allocate any internal buffers and needs just a few bytes of memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let bc = Superpowered.new('Bitcrusher',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+bc.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+bc.enable = true;
+
+bc.frequency = 9000; // Frequency in Hz, from 20 Hz to the half of the samplerate.
+bc.bits = 8;         // Bit depth, from 1 to 16.
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = bc.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4.
+);
+
+// Destructor (to free up memory).
+bc.destruct();
+</code></pre>
+
+<h3>Echo</h3>
+
+<p>Simple echo ("delay effect"). One instance allocates around 770 kb memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let echo = Superpowered.new('Echo',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+echo.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+echo.enable = true;
+
+echo.dry = 0.9;   // >= 0 and <= 1. Read-write.
+echo.wet = 0.5;   // >= 0 and <= 1. Read-write.
+echo.bpm = 128.1; // >= 40 and <= 250. Read-write.
+echo.beats = 0.5; // Delay in beats, >= 0.03125 and <= 2.0. Read-write.
+echo.decay = 0.5; // >= 0 and <= 0.99. Read-write.
+
+// Sets dry and wet simultaneously with a good balance between them. Wet always equals to mix, but dry changes with a curve.
+echo.setMix(
+    0.5 // >= 0 and <= 1.
+);
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties and call setMix() on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = echo.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input. Can point to the same location with output (in-place processing). Special case: input can be null, the effect will output the tail only in this case.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output.
+    128     //Number of frames to process. Recommendation for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+echo.destruct();
+</code></pre>
+
+<h3>Delay</h3>
+
+<p>Simple delay with minimum memory operations.</p>
+
+<pre><code class="language-js">
+let delay = Superpowered.new('Delay',
+    100,   // Maximum delay in milliseconds. Higher values increase memory usage.
+    48000, // Maximum sample rate to support. Higher values increase memory usage.
+    1024,  // Maximum number of frames for the process() call. Has minimum effect on memory usage.
+    44100  // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+delay.samplerate = 48000;
+
+// Delay in milliseconds.
+delay.delayMs = 50.1;
+
+// Processes the audio.
+// It's never blocking for real-time usage. You can change any properties concurrently with process().
+// Returns with a pointer to floating point numbers, which is the output with numberOfFrames audio available in it. It is valid until the next call to process().
+let output = delay.process(
+    input, // Pointer to floating point numbers. 32-bit interleaved stereo input. Special case: set to null to empty all buffered content.
+    128    // Number of frames to input and output.
+);
+// If you want to "convert" the returned pointer to a JavaScript Float32Array, do this:
+let jsArray = new Float32Array(
+    Superpowered.buffer, // Linear memory buffer of the Superpowered module instance.
+    output,              // This linear memory index was returned by delay.process().
+    128 * 2              // Number of frames multiplied by the number of channels. In this example, 128 * 2.
+);
+
+// Destructor (to free up memory).
+delay.destruct();
+</code></pre>
+
+<h3>Flanger</h3>
+
+<p>Flanger with aggressive sound ("jet"). One instance allocates around 80 kb memory.</p>
+
+<pre><code class="language-js">
+// Constructor.
+let flanger = Superpowered.new('Flanger',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+flanger.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+flanger.enable = true;
+
+flanger.wet = 0.5;     // 0 to 1.
+flanger.depth = 0.5;   // 0 to 1 (0 is 0.3 ms, 1 is 8 ms).
+flanger.lfoBeats = 16; // The length in beats between the "lowest" and the "highest" jet sound, >= 0.25 and <= 128.
+flanger.bpm = 128;     // The bpm of the current audio. Limited to >= 40 and <= 250.
+flanger.stereo = true; // True: stereo, false: mono.
+flanger.clipperThresholdDb = -3; // The flanger has a Clipper inside to prevent overdrive. This is the thresholdDb parameter.
+flanger.clipperMaximumDb = 6;    // The flanger has a Clipper inside to prevent overdrive. This is the maximumDb parameter.
+
+// Returns with the current depth in milliseconds, 0.3f to 8.0f (0.3 ms to 8 ms).
+let flanger_depth_ms = flanger.getDepthMs();
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties and call getDepthMs() on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = flanger.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+flanger.destruct();
+</code></pre>
+
+<h3>Gate</h3>
+
+<p>Simple gate effect. It doesn't allocate any internal buffers and needs just a few bytes of memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let gate = Superpowered.new('Gate',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+gate.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+gate.enable = true;
+
+gate.wet = 0.5; // Limited to >= 0 and <= 1.
+gate.bpm = 128; // Limited to >= 40 and <= 250.
+gate.beats = 1; // The rhythm in beats to open and close the "gate". From 1/64 beats to 4 beats. (>= 0.015625 and <= 4)
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = gate.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: minimum 64.
+);
+
+// Destructor (to free up memory).
+gate.destruct();
+</code></pre>
+
+<h3>Roll</h3>
+
+<p>Bpm/beat based loop roll effect. One instance allocates around 1600 kb memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let roll = Superpowered.new('Roll',
+    44100, // The initial sample rate in Hz.
+    48000  // The maximum sample rate in Hz to support. The higher the larger the memory usage.
+);
+
+// Do this when the sample rate changes.
+roll.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+roll.enable = true;
+
+roll.wet = 0.5; // Limited to >= 0 and <= 1.
+roll.bpm = 128; // Limited to >= 40 and <= 250.
+roll.beats = 1; // Limit: 1/64 beats to 4 beats. (>= 0.015625 and <= 4.0).
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = roll.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: minimum 64.
+);
+
+// Destructor (to free up memory).
+roll.destruct();
+</code></pre>
+
+<h3>Reverb</h3>
+
+<p>CPU-friendly reverb. One instance allocates around 120 kb memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let reverb = Superpowered.new('Reverb',
+    44100, // The initial sample rate in Hz.
+    48000  // Maximum sample rate (affects memory usage, the lower the smaller).
+);
+
+// Do this when the sample rate changes.
+reverb.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+reverb.enable = true;
+
+reverb.dry = 1;        // Set dry independently from wet. Don't use the mix property in this case. >= 0 and <= 1.
+reverb.wet = 0.5;      // Set wet independently from dry. Don't use the mix property in this case. >= 0 and <= 1.
+reverb.mix = 0.8;      // Sets dry and wet simultaneously with a nice constant power curve. Don't change dry and wet in this case. >= 0 and <= 1.
+reverb.width = 1;      // Stereo width. >= 0 and <= 1.
+reverb.damp = 0;       // High frequency damping. >= 0 and <= 1.
+reverb.roomSize = 0.4; // Room size. >= 0 and <= 1.
+reverb.predelayMs = 9; // Pre-delay in milliseconds. 0 to 500.
+reverb.lowCutHz = 100; //  Frequency of the low cut in Hz (-12 db point). Default: 0 (no low frequency cut).
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = reverb.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input. Can point to the same location with output (in-place processing). Special case: input can be null, the effect will output the tail only in this case.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output.
+    128     // Number of frames to process. Recommendation for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+reverb.destruct();
+</code></pre>
+
+<h3>Whoosh</h3>
+
+<p>White noise + filter. One whoosh instance allocates around 4 kb memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let whoosh = Superpowered.new('Whoosh',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+whoosh.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+whoosh.enable = true;
+
+whoosh.wet = 0.8;        // Limited to >= 0 and <= 1.
+whoosh.frequency = 1000; // Limited to >= 20 and <= 20000.
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties  on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+whoosh.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input. The output will be mixed to this. Can be null.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo input. Can point to the same location with output (in-place processing).
+    128     // Number of frames to process. Recommendation for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+whoosh.destruct();
+</code></pre>
+
+<h3>Compressor</h3>
+
+<p>Compressor with 0 latency. It doesn't allocate any internal buffers and needs less than 1 kb of memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let compressor = Superpowered.new('Compressor',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+compressor.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+compressor.enable = true;
+
+compressor.inputGainDb = 0;   // Input gain in decibels, limited between -24 and 24. Default: 0.
+compressor.outputGainDb = 3;  // Output gain in decibels, limited between -24 and 24. Default: 0.
+compressor.wet = 1;           // Dry/wet ratio, limited between 0 (completely dry) and 1 (completely wet). Default: 1.
+compressor.attackSec = 0.01;  // Attack in seconds (not milliseconds!). Limited between 0.0001 and 1. Default: 0.003 (3 ms).
+compressor.releaseSec = 0.2;  // Release in seconds (not milliseconds!). Limited between 0.1 and 4. Default: 0.3 (300 ms).
+compressor.ratio = 5;         // Ratio, rounded to 1.5, 2.0, 3.0, 4.0, 5.0 or 10. Default: 3.
+compressor.thresholdDb = -16; // Threshold in decibels, limited between 0 and -40. Default: 0.
+compressor.hpCutOffHz = 100;  // Key highpass filter frequency, limited between 1 and 10000. Default: 1.
+
+// Returns the maximum gain reduction in decibels since the last getGainReductionDb() call.
+let gain_reduction_db = compressor.getGainReductionDb();
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties and call getGainReductionDb() on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = compressor.process(
+    input   // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+compressor.destruct();
+</code></pre>
+
+<h3>Limiter</h3>
+
+<p>Limiter with 32 samples latency. It doesn't allocate any internal buffers and needs less than 1 kb of memory.</p>
+
+<pre><code class="language-js">
+Constructor. Enabled is false by default.
+let limiter = Superpowered.new('Limiter',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+limiter.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+limiter.enable = true;
+
+limiter.ceilingDb = 0;     // Ceiling in decibels, limited between 0 and -40. Default: 0.
+limiter.thresholdDb = -16; // Threshold in decibels, limited between 0 and -40. Default: 0.
+limiter.releaseSec = 0.2;  // Release in seconds (not milliseconds!). Limited between 0.1 and 1.6. Default: 0.05 (50 ms).
+
+// Returns the maximum gain reduction in decibels since the last getGainReductionDb() call.
+let gain_reduction_db = limiter.getGainReductionDb();
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties and call getGainReductionDb() on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = limiter.process(
+    input   // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+limiter.destruct();
+</code></pre>
+
+<h3>Clipper</h3>
+
+<p>Hard knee clipping with 0 latency. It doesn't allocate any internal buffers and needs just a few bytes of memory.</p>
+
+<pre><code class="language-js">
+// Constructor.
+let clipper = Superpowered.new('Clipper');
+
+clipper.thresholdDb = -6; // Audio below this will be unchanged, above this will be attenuated. Limited between -100 and 0.
+clipper.maximumDb = 0;    // Audio will reach 1.0f at this point. Limited between -48 and 48.
+
+// Processes the audio. Has no return value.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+clipper.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Should be 4 minimum and exactly divisible with 4.
+);
+
+// Destructor (to free up memory).
+clipper.destruct();
+</code></pre>
+
+<h3>Filter</h3>
+
+<p>Filter is an IIR filter based on the typical direct form 1 formula:</p>
+<pre><code class="language-js">
+y[n] = (b0/a0)*x[n] + (b1/a0)*x[n-1] + (b2/a0)*x[n-2] - (a1/a0)*y[n-1] - (a2/a0)*y[n-2]
+</code></pre>
+<p>It doesn't allocate any internal buffers and needs just a few bytes of memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let filter = Superpowered.new('Filter',
+    Superpowered.FilterType.Resonant_Lowpass, // The initial filter type.
+    44100                                     // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+filter.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+filter.enable = true;
+
+filter.frequency = 1000; // Frequency in Hz. From 1 Hz to the half of the current sample rate.
+filter.decibel = 6;      // Decibel gain value for shelving and parametric filters. Limit: -96 to 24.
+filter.resonance = 0.8;  // Resonance value for resonant filters. Resonance = Q / 10. Limit: 0.01 to 1.
+filter.octave = 1;       // Width in octave for bandlimited and parametric filters. Limit: 0.05 to 5.
+filter.slope = 0.5;      // Slope value for shelving filters. Limit: 0.001 to 1.
+
+filter.type = Superpowered.FilterType.Parametric; // Filter type. Changing the filter type often involves changing other parameters as well. Therefore in a real-time context change the parameters and the type in the same thread with the process() call.
+
+// Superpowered filter types and their effective parameters:
+Superpowered.FilterType.Resonant_Lowpass     // frequency, resonance
+Superpowered.FilterType.Resonant_Highpass    // frequency, resonance
+Superpowered.FilterType.Bandlimited_Bandpass // frequency, octave
+Superpowered.FilterType.Bandlimited_Notch    // frequency, octave
+Superpowered.FilterType.LowShelf             // frequency, slope, decibel
+Superpowered.FilterType.HighShelf            // frequency, slope, decibel
+Superpowered.FilterType.Parametric           // frequency, octave, decibel
+Superpowered.FilterType.CustomCoefficients
+
+// For advanced use. Set custom coefficients for the filter. Changes will be smoothly handled to prevent audio artifacts. Do not call this concurrently with process().
+filter.setCustomCoefficients(
+    1, // b0/a0
+    1, // b1/a1
+    1, // b2/a0
+    1, // a1/a0
+    1  // a2/a0
+);
+
+// Processes interleaved stereo audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process(). Do not call any method concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+filter.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Processes mono audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process(). Do not call any method concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = filter.process(
+    input,  // Pointer to floating point numbers. 32-bit mono input.
+    output, // Pointer to floating point numbers. 32-bit mono output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+filter.destruct();
+</code></pre>
+
+<h3>Spatializer</h3>
+
+<p>CPU-friendly 3D audio spatializer. One instance allocates around 140 kb memory.</p>
+<p>The spatializer class also has one Global Spatializer Reverb instance to simulate "room sound". It collects audio from all Spatializer instances and puts a reverb on the signal.</p>
+
+<pre><code class="language-js">
+let spatializer = Superpowered.new('Spatializer',
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+spatializer.samplerate = 48000;
+
+spatializer.inputVolume = 0.5; // Input volume (gain).
+spatializer.azimuth = 45;      // From 0 to 360 degrees.
+spatializer.elevation = 0;     // -90 to 90 degrees.
+spatializer.reverbmix = 0.05;  // The ratio of how much audio the Global Spatializer Reverb can collect from this instance (between 0 and 1).
+spatializer.occlusion = 0;     // Occlusion factor (between 0 and 1);
+spatializer.sound2 = false;    // Alternative sound option. True on, false off.
+
+Superpowered.Spatializer.reverbWidth = 1;      // Global Spatializer Reverb stereo width. >= 0 and <= 1.
+Superpowered.Spatializer.reverbDamp = 0.5;     // Global Spatializer Reverb high frequency damping. >= 0 and <= 1.
+Superpowered.Spatializer.reverbRoomSize = 0.6; // Global Spatializer Reverb room size. >= 0 and <= 1.
+Superpowered.Spatializer.reverbPredelayMs = 0; // Global Spatializer Reverb pre-delay in milliseconds. 0 to 500.
+Superpowered.Spatializer.reverbLowCutHz = 100; // Global Spatializer Reverb frequency of the low cut in Hz (-12 db point). Default: 0 (no low frequency cut).
+
+// Processes the audio.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = spatializer.process(
+    inputLeft   // Pointer to floating point numbers. 32-bit left channel or interleaved stereo input.
+    inputRight  // Pointer to floating point numbers. 32-bit right channel input. Can be null, inputLeft will be used in this case as interleaved stereo input.
+    outputLeft  // Pointer to floating point numbers. 32-bit left channel or interleaved stereo output.
+    outputRight // Pointer to floating point numbers. 32-bit right channel output. Can be null, outputLeft will be used in this case as interleaved stereo output.
+    128,        // Number of frames to process. Valid between 64-8192.
+    false       // If true, audio will be added to whatever content is in outputLeft or outputRight.
+);
+
+// Outputs the Global Spatializer Reverb. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation. Should be called after every Spatializer's process() method.
+// It's never blocking for real-time usage. You can change all properties of the globalReverb on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = Superpowered.Spatializer.reverbProcess(
+    output // Pointer to floating point numbers. 32-bit interleaved stereo output.
+    128    // Number of framesto process. Should not be higher than 8192.
+);
+
+// Destructor (to free up memory).
+spatializer.destruct();
+</code></pre>
+
+<h2>Time and Pitch</h2>
+
+<h3>Resampler</h3>
+
+<p>Linear or 6-point resampler, audio reverser and 16-bit to 32-bit audio converter.</p>
+<p>It doesn't allocate any internal buffers and needs just a few bytes of memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Has no additional parameters.
+let resampler = Superpowered.new('Resampler');
+
+// The rate of the resampler. Default: 1. If rate = 1, process() is "transparent" without any effect on audio quality.
+resampler.rate = 1.1;
+
+// Reset all internals. Doesn't change rate. Has no return value.
+resampler.reset();
+
+// Processes the audio.
+let outputNumberOfFrames = resampler.process(
+    input,  // Pointer to short integer numbers, 16-bit stereo interleaved input. Should be numberOfFrames * 2 + 64 big.
+    output, // Pointer to floating point numbers, 32-bit stereo interleaved output. Should be big enough to store the expected number of output frames and some more.
+    128,    // Number of frames to process.
+    false,  // If true, the output will be backwards (reverse playback).
+    false,  // Enables more sophisticated processing to reduce interpolation noise. Good for scratching for example, but not recommended for continous music playback above 0.5 rate.
+    0       // "rateAdd": Changes rate smoothly during process(). Useful for scratching or super smooth rate changes. After process() rate will be changed, but may or may not be precisely equal to the desired target value.
+);
+
+// Processes the audio.
+let outputNumberOfFrames = resampler.process(
+    input,  // Pointer to short integer numbers, 16-bit stereo interleaved input. Should be numberOfFrames * 2 + 64 big.
+    temp,   // Pointer to floating point numbers. Should be numberOfFrames * 2 + 64 big.
+    output, // Pointer to short integer numbers, 16-bit stereo interleaved output. Should be big enough to store the expected number of output frames and some more.
+    128,    // Number of frames to process.
+    false,  // If true, the output will be backwards (reverse playback).
+    false,  // Enables more sophisticated processing to reduce interpolation noise. Good for scratching for example, but not recommended for continous music playback above 0.5 rate.
+    0       // "rateAdd": Changes rate smoothly during process(). Useful for scratching or super smooth rate changes. After process() rate will be changed, but may or may not be precisely equal to the desired target value.
+);
+
+// Destructor (to free up memory).
+resampler.destruct();
+</code></pre>
+
+<h3>Frequency Domain</h3>
+
+<p>Transforms between time-domain and frequency-domain audio, including buffering, windowing (HanningZ) and window overlap handling (default: 4:1).</p>
+<p>One instance allocates around 131 kb. How to use:</p>
+<ol>
+    <li>Audio input using addInput().</li>
+    <li>Call timeDomainToFrequencyDomain(), if it returns false go back to 1.</li>
+    <li>The output of timeDomainToFrequencyDomain is frequency domain data you can work with.</li>
+    <li>Call advance() (if required).</li>
+    <li>Call frequencyDomainToTimeDomain() to create time domain audio from frequency domain data.</li>
+</ol>
+
+<pre><code class="language-js">
+// Constructor.
+let fd = Superpowered.new('FrequencyDomain',
+    11, // FFT log size, between 8 and 13 (FFT 256 - 8192). The default value (11) provides a good compromise in precision (~22 Hz per bin), CPU load and time-domain event sensitivity.
+    4   // [Maximum overlap]:1 (default: 4:1).
+);
+
+// Returns with how many frames of input should be provided to produce some output.
+let frames = fd.getNumberOfInputFramesNeeded();
+
+// Reset all internals, sets the instance as good as new. Has no return value.
+fd.reset();
+
+// Add some audio input. Has no return value.
+fd.addInput(
+    input, // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    512    // The number of input frames.
+);
+
+// Converts the audio input (added by addInput()) to the frequency domain.
+// Each frequency bin is (samplerate / [FFT SIZE] / 2) wide.
+// Returns true, if a conversion was possible (enough frames were available).
+let success = fd.timeDomainToFrequencyDomain(
+    magnitudeL, // Pointer to floating point numbers. Magnitudes for each frequency bin, left side. Must be at least [FFT SIZE] big.
+    magnitudeR, // Pointer to floating point numbers. Magnitudes for each frequency bin, right side.  Must be at least [FFT SIZE] big.
+    phaseL,     // Pointer to floating point numbers. Phases for each frequency bin, left side.  Must be at least [FFT SIZE] big.
+    phaseR,     // Pointer to floating point numbers. Phases for each frequency bin, right side.  Must be at least [FFT SIZE] big.
+    0,          // Value of Pi. Pi can be translated to any value (Google: the tau manifesto). Keep it at 0 for M_PI.
+    false,      // If true, then it returns with complex numbers (magnitude: real, phase: imag). Performs polar transform otherwise (the output is magnitudes and phases).
+    0           // The index of the stereo pair to process.
+)
+
+// Converts mono audio input (added by addInput()) to the frequency domain.
+// Each frequency bin is (samplerate / [FFT SIZE] / 2) wide.
+// Returns true, if a conversion was possible (enough frames were available).
+let success = fd.timeDomainToFrequencyDomainMono(
+    magnitude, // Pointer to floating point numbers. Magnitudes for each frequency bin. Must be at least [FFT SIZE] big.
+    phase,     // Pointer to floating point numbers. Phases for each frequency bin.  Must be at least [FFT SIZE] big.
+    0,         // Value of Pi. Pi can be translated to any value (Google: the tau manifesto). Keep it at 0 for M_PI.
+    false      // If true, then it returns with complex numbers (magnitude: real, phase: imag). Performs polar transform otherwise (the output is magnitudes and phases).
+)
+
+// Advances the input buffer (removes the earliest frames). Has no return value.
+fd.advance(
+    0 // Number of frames. For advanced use, if you know how window overlapping works. Use 0 (the default value) otherwise for a 4:1 overlap (good compromise in audio quality).
+);
+
+// Converts frequency domain data to audio output. Has no return value.
+fd.frequencyDomainToTimeDomain(
+    magnitudeL, // Pointer to floating point numbers. Magnitudes for each frequency bin, left side. Must be at least [FFT SIZE] big.
+    magnitudeR, // Pointer to floating point numbers. Magnitudes for each frequency bin, right side. Must be at least [FFT SIZE] big.
+    phaseL,     // Pointer to floating point numbers. Phases for each frequency bin, left side. Must be at least [FFT SIZE] big.
+    phaseR,     // Pointer to floating point numbers. Phases for each frequency bin, right side. Must be at least [FFT SIZE] big.
+    output,     // Pointer to floating point numbers. 32-bit interleaved stereo output.
+    0,          // Value of Pi. Pi can be translated to any value (Google: the tau manifesto). Leave it at 0 for M_PI.
+    0,          // For advanced use, if you know how window overlapping works. Use 0 (the default value) otherwise for a 4:1 overlap (good compromise in audio quality).
+    false,      // If true, then the magnitude and phase inputs represent complex numbers (magnitude: real, phase: imag).
+    0           // The index of the stereo pair to process.
+);
+
+// Destructor (to free up memory).
+fd.destruct();
+</code></pre>
+
+<h3>TimeStretching</h3>
+
+<p>Time stretching and pitch shifting. One instance allocates around 220 kb memory.</p>
+
+<pre><code class="language-js">
+// Constructor.
+let ts = Superpowered.new('TimeStretching',
+    44100, // The initial sample rate in Hz.
+    0.5,   // The minimum value of rate. For example: if the rate will never go below 0.5, minimumRate = 0.5 will save significant computing power and memory. Minimum value of this: 0.01.
+    1      // Valid values are: 0 (best to save CPU with slightly lower audio quality), 1 (best for DJ apps, modern and "complete" music), 2 (best for instrumental loops and single instruments).
+);
+
+// Do this when the sample rate changes.
+ts.samplerate = 48000;
+
+// Time stretching rate (tempo). 1 means no time stretching. Maximum: 4. Values above 2 or below 0.5 are not recommended on mobile devices with low latency audio due high CPU load and risk of audio dropouts.
+ts.rate = 1.04;
+
+// Pitch shift cents, limited from -2400 (two octaves down) to 2400 (two octaves up). Examples: 0 (no pitch shift), -100 (one note down), 300 (3 notes up).
+// When the value if a multiply of 100 and is >= -1200 and <= 1200, changing the pitch shift needs only a few CPU clock cycles. Any change in pitchShiftCents involves significant momentary CPU load otherwise.
+ts.pitchShiftCents = 100;
+
+// Returns with how many frames of input should be provided to the time stretcher to produce some output.
+// It's never blocking for real-time usage. Use it in the same thread with the other real-time methods of this class.
+// The result can be 0 if rate is 1 and pitch shift is 0, because in that case the time stretcher is fully "transparent" and any number of input frames will produce some output.
+let frames = ts.getNumberOfInputFramesNeeded();
+
+// Returns with how many frames of output is available.
+// It's never blocking for real-time usage. Use it in the same thread with the other real-time methods of this class.
+let frames = ts.getOutputLengthFrames();
+
+// Processes audio. Has no return value.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process(). Use it in the same thread with the other real-time methods of this class.
+ts.addInput(
+    input, // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    512    // Number of frames to process.
+);
+
+// Gets the audio output into a buffer.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process(). Use it in the same thread with the other real-time methods of this class.
+// Returns true if it has enough output frames stored and output is successfully written, false otherwise.
+let success = ts.getOutput(
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output.
+    512     // Number of frames to return with.
+);
+
+// Reset all internals, sets the instance as good as new. Has no return value.
+// Don't call this concurrently with process() and in a real-time thread.
+ts.reset();
+
+// Destructor (to free up memory).
+ts.destruct();
+</code></pre>
+</main>
+
+<script src="docs_js_css/prism.js"></script>
+<script src="docs_js_css/toc.js"></script>
+</body>
