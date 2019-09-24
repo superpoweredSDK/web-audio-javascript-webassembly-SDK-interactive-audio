@@ -153,7 +153,7 @@ class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
 
         // Let's send some data back to the main scope (main thread).
         // This method accepts any object (string, array, etc.) as it's single input parameter.
-        this.sendMessageToAudioScope({
+        this.sendMessageToMainScope({
             someText: "Got your message!",
             hz: samplerate
         });

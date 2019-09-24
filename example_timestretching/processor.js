@@ -24,9 +24,9 @@ class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
             this.posFrames = 0;
         }
         // changing the rate?
-        if (message.rate) this.timeStretching.rate = message.rate / 10000.0;
+        if (typeof message.rate !== 'undefined') this.timeStretching.rate = message.rate / 10000.0;
         // changing the pitch shift?
-        if (message.pitchShift) this.timeStretching.pitchShiftCents = message.pitchShift * 100;
+        if (typeof message.pitchShift !== 'undefined') this.timeStretching.pitchShiftCents = message.pitchShift * 100;
     }
 
     processAudio(inputBuffer, outputBuffer, buffersize, parameters) {

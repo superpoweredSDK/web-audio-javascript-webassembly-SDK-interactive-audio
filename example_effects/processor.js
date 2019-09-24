@@ -22,10 +22,10 @@ class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
     }
 
     onMessageFromMainScope(message) {
-        if (message.wet) {
+        if (typeof message.wet !== 'undefined') {
             this.reverb.wet = message.wet / 100;
             console.log(message.wet + '%');
-        } else if (message.freq) {
+        } else if (typeof message.freq !== 'undefined') {
             let hz = calculateFrequency(parseFloat(message.freq) / 100, 100, 10000);
             this.filter.frequency = hz;
             console.log(parseInt(hz, 10) + ' hz');
