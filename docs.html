@@ -25,6 +25,14 @@
 <h3>Initialization</h3>
 
 <pre><code class="language-js">
+// Import Superpowered.
+import SuperpoweredModule from './superpowered.js';
+
+// Most major web browsers can not import modules in Worker scripts, therefore the import above may not work.
+// In that case, import Superpowered in a Worker script like this:
+importScripts('./superpowered-worker.js');
+
+
 // Initializes Superpowered. Returns with a Superpowered instance.
 // Always call this once in your main scope (main thread).
 // Worklets: if using Superpowered in a Worklet, call this in the Worklet as well.
@@ -502,7 +510,7 @@ Superpowered.PolarFFT(
     mag,   // Pointer to floating point numbers. Input: split real part. Output: magnitudes.
     phase, // Pointer to floating point numbers. Input: split real part. Output: phases.
     9,     // Should be 5 - 13 (FFT sizes 32 - 8192).
-    true,  // Forward (true) or inverse (false).
+    true,  // Forward (true) or inverse (false). Inverse PolarFFT will clear (zero) the DC offset.
     0      // Value of pi: The function can translate pi to any value (Google: the tau manifesto). Use 0 for pi.
 );
 </code></pre>

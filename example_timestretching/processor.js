@@ -4,7 +4,7 @@ var Superpowered = null;
 
 class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
     // runs after the constructor
-    onReady() {
+    onReady() { 
         Superpowered = this.Superpowered;
         this.posFrames = -1;
         // allocating some WASM memory for passing audio to the time stretcher
