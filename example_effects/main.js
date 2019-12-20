@@ -15,7 +15,7 @@ function setState(newState) {
 // called when the user provided permission for the microphone
 function onStreamCreated(micStream) {
     let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-    
+
     Superpowered.createAudioNode(audioContext, currentPath + '/processor.js', 'MyProcessor',
         // runs after the audio node is created
         function(newNode) {
@@ -70,7 +70,7 @@ Superpowered = SuperpoweredModule({
     onReady: function() {
         // UI: innerHTML may be ugly but keeps this example small
         document.getElementById('content').innerHTML = '\
-            <p>Put on your headphones fiirst, you\'ll be deaf due audio feedback otherwise.</p>\
+            <p>Put on your headphones first, you\'ll be deaf due audio feedback otherwise.</p>\
             <p id="audioStack" style="font-style: italic"></p>\
             <p><button id="btn">-</button></p>\
             <p>Reverb wet: <input type="range" min="0" max="100" value="50" class="reverbslider" id="wet"></p>\

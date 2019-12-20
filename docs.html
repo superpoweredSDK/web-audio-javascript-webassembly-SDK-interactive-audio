@@ -1243,6 +1243,50 @@ let changedOutput = filter.process(
 filter.destruct();
 </code></pre>
 
+<h3>Guitar Distortion</h3>
+
+<p>Guitar distortion effect including Marshall cabinet, ADA cabinet and V-Twin preamp simulation, 5-band equalizer, bass and treble tone controls and two distortion sounds. One instance allocates around 32 kb memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let gd = Superpowered.new('GuitarDistortion',
+    44100                                     // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+gd.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+gd.enable = true;
+
+gd.gainDecibel = 0;        // Gain value in decibel. Limit: -96 to 24.
+gd.drive = 0.2;            // Drive percentage, from 0 to 1.
+gd.bassFrequency = 25;     // High-pass filter frequency in Hz. From 1 Hz to 250 Hz.
+gd.trebleFrequency = 8000; // Low-pass filter frequency in Hz. From 6000 Hz to the half of the current sample rate.
+gd.eq80HzDecibel = 0;      // EQ 80 Hz decibel gain. Limit: -96 to 24.
+gd.eq240HzDecibel = 0;     // EQ 240 Hz decibel gain. Limit: -96 to 24.
+gd.eq750HzDecibel = 0;     // EQ 750 Hz decibel gain. Limit: -96 to 24.
+gd.eq2200HzDecibel = 0;    // EQ 2200 Hz decibel gain. Limit: -96 to 24.
+gd.eq6600HzDecibel = 0;    // EQ 6600 Hz decibel gain. Limit: -96 to 24.
+gd.distortion0 = false;    // Enables the first distortion sound, that is similar to Boss DS-1.
+gd.distortion1 = true;     // Enables the second distortion sound, that is similar to Tyrian.
+gd.marshall = true;        // Enables Marshall cabinet simulation.
+gd.ada = false;            // Enables ADA cabinet simulation. Adds a lot of bass and treble.
+gd.vtwin = false;          // Enables V-Twin preamp simulation. Recommended for blues/jazz.
+
+// Processes interleaved stereo audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process(). Do not call any method concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+gd.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+gd.destruct();
+</code></pre>
+
 <h3>Spatializer</h3>
 
 <p>CPU-friendly 3D audio spatializer. One instance allocates around 140 kb memory.</p>
