@@ -37,6 +37,9 @@ https://superpowered.com/js-wasm-sdk/example_timestretching/
 Real-time low-latency reverb and filter in the browser:\
 https://superpowered.com/js-wasm-sdk/example_effects/
 
+Real-time low-latency guitar distortion in the browser:\
+https://superpowered.com/js-wasm-sdk/example_guitardistortion/
+
 
 # Supported Web Browsers
 

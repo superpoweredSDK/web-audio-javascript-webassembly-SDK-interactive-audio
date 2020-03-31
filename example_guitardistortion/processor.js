@@ -7,7 +7,7 @@ class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
     onReady() {
         Superpowered = this.Superpowered;
         this.posFrames = -1;
-        // allocating some WASM memory for passing audio to the time stretcher
+        // allocating some WASM memory for passing audio to the effect
         this.pcm = Superpowered.createFloatArray(2048 * 2);
         // the star of the show
         this.distortion = Superpowered.new('GuitarDistortion', Superpowered.samplerate);

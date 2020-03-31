@@ -84,18 +84,7 @@ function applyPreset(preset) {
     }
 }
 
-// we have the audio system created, let's display the UI and start playback
-function onAudioDecoded(buffer) {
-    // send the PCM audio to the audio node
-    audioNode.sendMessageToAudioScope({
-         left: buffer.getChannelData(0),
-         right: buffer.getChannelData(1) }
-    );
-
-    // audioNode -> audioContext.destination (audio output)
-    audioContext.suspend();
-    audioNode.connect(audioContext.destination);
-
+function startUserInterface() {
     // UI: innerHTML may be ugly but keeps this example relatively small
     content.innerHTML = '\
         <h3>Choose from these presets for A/B comparison:</h3>\
@@ -162,34 +151,54 @@ function onAudioDecoded(buffer) {
     applyPreset(presets.transparent);
 }
 
-// when the START button is clicked
-function start() {
+function onMessageFromAudioScope(message) {
+    console.log('Message received from the audio node: ' + message);
+}
+
+// when the START WITH GUITAR SAMPLE button is clicked
+async function startSample() {
     content.innerText = 'Creating the audio context and node...';
     audioContext = Superpowered.getAudioContext(44100);
     let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    audioNode = await Superpowered.createAudioNodeAsync(audioContext, currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
 
-    Superpowered.createAudioNode(audioContext, currentPath + '/processor.js', 'MyProcessor',
-        // runs after the audio node is created
-        function(newNode) {
-            audioNode = newNode;
-            content.innerText = 'Downloading music...';
+    content.innerText = 'Downloading music...';
+    let response = await fetch('track.wav');
 
-            // downloading the music
-            let request = new XMLHttpRequest();
-            request.open('GET', 'track.wav', true);
-            request.responseType = 'arraybuffer';
-            request.onload = function() {
-                content.innerText = 'Decoding audio...';
-                audioContext.decodeAudioData(request.response, onAudioDecoded);
-            }
-            request.send();
-        },
+    content.innerText = 'Decoding audio...';
+    let rawData = await response.arrayBuffer();
+    audioContext.decodeAudioData(rawData, function(pcmData) { // Safari doesn't support await for decodeAudioData yet
+        // send the PCM audio to the audio node
+        audioNode.sendMessageToAudioScope({
+             left: pcmData.getChannelData(0),
+             right: pcmData.getChannelData(1) }
+        );
 
-        // runs when the audio node sends a message
-        function(message) {
-            console.log('Message received from the audio node: ' + message);
-        }
-    );
+        // audioNode -> audioContext.destination (audio output)
+        audioContext.suspend();
+        audioNode.connect(audioContext.destination);
+        startUserInterface();
+    });
+}
+
+// when the START WITH AUDIO INPUT button is clicked
+async function startInput() {
+    content.innerText = 'Creating the audio context and node...';
+    audioContext = Superpowered.getAudioContext(44100);
+
+    let micStream = await Superpowered.getUserMediaForAudioAsync({ 'fastAndTransparentAudio': true })
+    .catch((error) => {
+        // called when the user refused microphone permission
+        console.log(error);
+    });
+    if (!micStream) return;
+
+    let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    audioNode = await Superpowered.createAudioNodeAsync(audioContext, currentPath + '/processor_live.js', 'MyProcessor', onMessageFromAudioScope);
+    let audioInput = audioContext.createMediaStreamSource(micStream);
+    audioInput.connect(audioNode);
+    audioNode.connect(audioContext.destination);
+    startUserInterface();
 }
 
 Superpowered = SuperpoweredModule({
@@ -198,7 +207,8 @@ Superpowered = SuperpoweredModule({
 
     onReady: function() {
         content = document.getElementById('content');
-        content.innerHTML = '<button id="startButton">START</button>';
-        document.getElementById('startButton').addEventListener('click', start);
+        content.innerHTML = '<p>Use this if you just want to listen: <button id="startSample">START WITH GUITAR SAMPLE</button></p><p>Use this if you want to play the guitar live: <button id="startInput">START WITH AUDIO INPUT</button></p>';
+        document.getElementById('startSample').addEventListener('click', startSample);
+        document.getElementById('startInput').addEventListener('click', startInput);
     }
 });

@@ -12,48 +12,30 @@ function setState(newState) {
     document.getElementById('btn').innerText = state;
 }
 
-// called when the user provided permission for the microphone
-function onStreamCreated(micStream) {
-    let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-
-    Superpowered.createAudioNode(audioContext, currentPath + '/processor.js', 'MyProcessor',
-        // runs after the audio node is created
-        function(newNode) {
-            // audioInput (microphone, etc.) -> audioNode -> audioContext.destination (audio output)
-            audioNode = newNode;
-            let audioInput = audioContext.createMediaStreamSource(micStream);
-            audioInput.connect(newNode);
-            newNode.connect(audioContext.destination);
-            setState(states.RUNNING);
-        },
-
-        // runs when the audio node sends a message
-        function(message) {
-            console.log('Message received from the audio node: ' + message);
-        }
-    );
-}
-
-// called when the user refused microphone permission
-function onStreamError(error) {
-    console.log(error);
-    setState(states.NOTRUNNING);
+function onMessageFromAudioScope(message) {
+    console.log('Message received from the audio node: ' + message);
 }
 
 // when the button is clicked
-function toggleAudio() {
+async function toggleAudio() {
     if (state == states.NOTRUNNING) {
         setState(states.INITIALIZING);
         audioContext = Superpowered.getAudioContext(44100);
 
-        // request microphone permission
-        Superpowered.getUserMediaForAudio(
-            {  // navigator.mediaDevices.getUserMedia constraints
-                'echoCancellation': false
-            },
-            onStreamCreated,
-            onStreamError
-        );
+        let micStream = await Superpowered.getUserMediaForAudioAsync({ 'fastAndTransparentAudio': true })
+        .catch((error) => {
+            // called when the user refused microphone permission
+            console.log(error);
+            setState(states.NOTRUNNING);
+        });
+        if (!micStream) return;
+
+        let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        audioNode = await Superpowered.createAudioNodeAsync(audioContext, currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
+        let audioInput = audioContext.createMediaStreamSource(micStream);
+        audioInput.connect(audioNode);
+        audioNode.connect(audioContext.destination);
+        setState(states.RUNNING);
     } else if (state == states.RUNNING) {
         // stop everything
         audioContext.close();

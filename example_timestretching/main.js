@@ -50,62 +50,48 @@ function togglePlayback(e) {
     }
 }
 
-// we have the audio system created, let's display the UI and start playback
-function onAudioDecoded(buffer) {
-    // send the PCM audio to the audio node
-    audioNode.sendMessageToAudioScope({
-         left: buffer.getChannelData(0),
-         right: buffer.getChannelData(1) }
-    );
-
-    // audioNode -> audioContext.destination (audio output)
-    audioContext.suspend();
-    audioNode.connect(audioContext.destination);
-
-    // UI: innerHTML may be ugly but keeps this example small
-    content.innerHTML = '\
-        <button id="playPause" value="0">PLAY</button>\
-        <p id="rateDisplay">original tempo</p>\
-        <input id="rateSlider" type="range" min="5000" max="20000" value="10000" style="width: 100%">\
-        <button id="pitchMinus" value="-1">-</button>\
-        <span id="pitchShiftDisplay"> pitch shift: 0 </span>\
-        <button id="pitchPlus" value="1">+</button>\
-    ';
-    document.getElementById('rateSlider').addEventListener('input', changeRate);
-    document.getElementById('rateSlider').addEventListener('dblclick', changeRateDbl);
-    document.getElementById('pitchMinus').addEventListener('click', changePitchShift);
-    document.getElementById('pitchPlus').addEventListener('click', changePitchShift);
-    document.getElementById('playPause').addEventListener('click', togglePlayback);
+function onMessageFromAudioScope(message) {
+    console.log('Message received from the audio node: ' + message);
 }
 
 // when the START button is clicked
-function start() {
+async function start() {
     content.innerText = 'Creating the audio context and node...';
     audioContext = Superpowered.getAudioContext(44100);
     let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    audioNode = await Superpowered.createAudioNodeAsync(audioContext, currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
 
-    Superpowered.createAudioNode(audioContext, currentPath + '/processor.js', 'MyProcessor',
-        // runs after the audio node is created
-        function(newNode) {
-            audioNode = newNode;
-            content.innerText = 'Downloading music...';
+    content.innerText = 'Downloading music...';
+    let response = await fetch('track.wav');
 
-            // downloading the music
-            let request = new XMLHttpRequest();
-            request.open('GET', 'track.wav', true);
-            request.responseType = 'arraybuffer';
-            request.onload = function() {
-                content.innerText = 'Decoding audio...';
-                audioContext.decodeAudioData(request.response, onAudioDecoded);
-            }
-            request.send();
-        },
+    content.innerText = 'Decoding audio...'; console.log('new');
+    let rawData = await response.arrayBuffer();
+    audioContext.decodeAudioData(rawData, function(pcmData) { // Safari doesn't support await for decodeAudioData yet
+        // send the PCM audio to the audio node
+        audioNode.sendMessageToAudioScope({
+             left: pcmData.getChannelData(0),
+             right: pcmData.getChannelData(1) }
+        );
 
-        // runs when the audio node sends a message
-        function(message) {
-            console.log('Message received from the audio node: ' + message);
-        }
-    );
+        // audioNode -> audioContext.destination (audio output)
+        audioContext.suspend();
+        audioNode.connect(audioContext.destination);
+
+        // UI: innerHTML may be ugly but keeps this example small
+        content.innerHTML = '\
+            <button id="playPause" value="0">PLAY</button>\
+            <p id="rateDisplay">original tempo</p>\
+            <input id="rateSlider" type="range" min="5000" max="20000" value="10000" style="width: 100%">\
+            <button id="pitchMinus" value="-1">-</button>\
+            <span id="pitchShiftDisplay"> pitch shift: 0 </span>\
+            <button id="pitchPlus" value="1">+</button>\
+        ';
+        document.getElementById('rateSlider').addEventListener('input', changeRate);
+        document.getElementById('rateSlider').addEventListener('dblclick', changeRateDbl);
+        document.getElementById('pitchMinus').addEventListener('click', changePitchShift);
+        document.getElementById('pitchPlus').addEventListener('click', changePitchShift);
+        document.getElementById('playPause').addEventListener('click', togglePlayback);
+    });
 }
 
 Superpowered = SuperpoweredModule({

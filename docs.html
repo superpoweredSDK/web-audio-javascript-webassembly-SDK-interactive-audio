@@ -90,6 +90,7 @@ Superpowered.destroyFloatArray(someBuffer); // Deallocate everything.
 
 <h3>Web Audio</h3>
 
+<p>Superpowered has helper functions for easier Web Audio initialization. The returned objects are standard Web Audio objects without any quirks. Please note that Web Audio requires a secure context: HTTPS or localhost.</p>
 <p>Visit the effects example project to see these in context for better understanding.</p>
 
 <pre><code class="language-js">
@@ -97,7 +98,7 @@ Superpowered.destroyFloatArray(someBuffer); // Deallocate everything.
 // This function was made to help with browser-specific quirks.
 // Reference: https://developer.mozilla.org/en-US/docs/Web/API/AudioContext
 var audioContext = Superpowered.getAudioContext(
-    44100 // The sample rate to be used by the AudioContext.
+    44100 // The minimum sample rate of the AudioContext. The actual sample rate may be equal or higher.
 );
 
 // Prompts the user for permission to use a media input (typically the microphone) with an audio track and no video tracks. Has no return value.
@@ -117,6 +118,18 @@ Superpowered.getUserMediaForAudio(
         // Visit the reference above on what error represents.
     }
 );
+
+// Asynchronous version of getUserMediaForAudio.
+// Returns with a standard MediaStream object or undefined on error.
+let audioInputStream = await Superpowered.getUserMediaForAudioAsync(
+    {  // navigator.mediaDevices.getUserMedia constraints or "fastAndTransparentAudio" to disable all processing on the audio input
+        'fastAndTransparentAudio': true
+    },
+)
+.catch((error) => {
+    // Called when the user provided permission (typically for the microphone).
+});
+if (!audioInputStream) return; // Program flow will reach this point even on error.
 
 // Creates an Audio Worklet (for new browsers) or an audio processing ScriptProcessorNode (for older browsers).
 // This function was made to help with browser-specific quirks and to properly initialize Superpowered in an Audio Worklet context.
@@ -139,6 +152,18 @@ Superpowered.createAudioNode(
         myAudioNode.sendMessageToAudioScope({
             someText: "Hey!"
         });
+    }
+);
+
+// Asynchronous version of createAudioNode.
+// Returns with a standard AudioNode or ScriptProcessorNode.
+let audioNode = await Superpowered.createAudioNodeAsync(
+    audioContext,                    // The standard AudioContext instance.
+    '/example_effects/processor.js', // The JavaScript module source of the node.
+    'MyProcessor',                   // The registered processor name.
+    function(message) {
+        // Runs in the main scope (main thread) when the audio node sends a message.
+        // message is a standard JavaScript object.
     }
 );
 </code></pre>
