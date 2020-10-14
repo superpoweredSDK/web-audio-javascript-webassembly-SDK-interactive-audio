@@ -4,13 +4,13 @@ var Superpowered = null;
 
 class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
     // runs after the constructor
-    onReady() { 
+    onReady() {
         Superpowered = this.Superpowered;
         this.posFrames = -1;
         // allocating some WASM memory for passing audio to the time stretcher
         this.pcm = Superpowered.createFloatArray(2048 * 2);
         // the star of the show
-        this.timeStretching = Superpowered.new('TimeStretching', Superpowered.samplerate, 0.5, 1);
+        this.timeStretching = Superpowered.new('TimeStretching', Superpowered.samplerate, 0.5);
     }
 
     onMessageFromMainScope(message) {

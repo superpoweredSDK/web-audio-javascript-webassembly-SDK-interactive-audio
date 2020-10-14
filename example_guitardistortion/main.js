@@ -201,11 +201,12 @@ async function startInput() {
     startUserInterface();
 }
 
-Superpowered = SuperpoweredModule({
+SuperpoweredModule({
     licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
     enableAudioEffects: true,
 
-    onReady: function() {
+    onReady: function(SuperpoweredInstance) {
+        Superpowered = SuperpoweredInstance;
         content = document.getElementById('content');
         content.innerHTML = '<p>Use this if you just want to listen: <button id="startSample">START WITH GUITAR SAMPLE</button></p><p>Use this if you want to play the guitar live: <button id="startInput">START WITH AUDIO INPUT</button></p>';
         document.getElementById('startSample').addEventListener('click', startSample);

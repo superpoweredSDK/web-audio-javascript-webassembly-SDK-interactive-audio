@@ -44,12 +44,13 @@ async function toggleAudio() {
     }
 }
 
-Superpowered = SuperpoweredModule({
+SuperpoweredModule({
     licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
     enableAudioEffects: true,
     enableAudioAnalysis: true,
 
-    onReady: function() {
+    onReady: function(SuperpoweredInstance) {
+        Superpowered = SuperpoweredInstance;
         // UI: innerHTML may be ugly but keeps this example small
         document.getElementById('content').innerHTML = '\
             <p>Put on your headphones first, you\'ll be deaf due audio feedback otherwise.</p>\

@@ -64,7 +64,7 @@ async function start() {
     content.innerText = 'Downloading music...';
     let response = await fetch('track.wav');
 
-    content.innerText = 'Decoding audio...'; console.log('new');
+    content.innerText = 'Decoding audio...';
     let rawData = await response.arrayBuffer();
     audioContext.decodeAudioData(rawData, function(pcmData) { // Safari doesn't support await for decodeAudioData yet
         // send the PCM audio to the audio node
@@ -94,11 +94,12 @@ async function start() {
     });
 }
 
-Superpowered = SuperpoweredModule({
+SuperpoweredModule({
     licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
     enableAudioTimeStretching: true,
 
-    onReady: function() {
+    onReady: function(SuperpoweredInstance) {
+        Superpowered = SuperpoweredInstance;
         content = document.getElementById('content');
         content.innerHTML = '<button id="startButton">START</button>';
         document.getElementById('startButton').addEventListener('click', start);

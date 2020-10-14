@@ -37,14 +37,16 @@ importScripts('./superpowered-worker.js');
 // Always call this once in your main scope (main thread).
 // Worklets: if using Superpowered in a Worklet, call this in the Worklet as well.
 // Audio Worklets: do not call this in an Audio Worklet.
-var Superpowered = SuperpoweredModule({
+var Superpowered = null;
+SuperpoweredModule({
     licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate', // your license key
     enableAudioAnalysis: true,          // Enables Analyzer, Waveform and BandpassFilterbank.
     enableFFTAndFrequencyDomain: false, // Enables FFTComplex, FFTReal and PolarFFT.
     enableAudioTimeStretching: false,   // Enables TimeStretching.
     enableAudioEffects: false,          // Enables all effects and the Spatializer.
 
-    onReady: function() {
+    onReady: function(SuperpoweredInstance) {
+        Superpowered = SuperpoweredInstance;
         // stuff you run after Superpowered is initialized
     }
 });
