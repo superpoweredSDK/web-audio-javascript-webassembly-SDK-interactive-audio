@@ -57,6 +57,9 @@ p + p { margin-top: 1rem; }
 main ol, main ul { margin: 1rem 0; }
 main ol { list-style-type: decimal; }
 main li { margin-left: 4rem; }
+ul { list-style-type: disc; }
+dt { font-weight: 600; margin-left: 1rem; margin-top: 0.5rem; }
+dd { margin-left: 2rem; }
 
 ul#toc { list-style-type: none; }
 ul#toc li { margin-bottom: 3px; }

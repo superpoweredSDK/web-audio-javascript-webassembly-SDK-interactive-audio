@@ -1,7 +1,7 @@
 {
     "name": "superpowered",
     "description": "Superpowered interactive audio features in JavaScript + WebAssembly.",
-    "version": "2.0.7",
+    "version": "2.2.0",
     "browser": "superpowered.js",
     "scripts": {
       "test": "echo \"No test specified.\" && exit 1"

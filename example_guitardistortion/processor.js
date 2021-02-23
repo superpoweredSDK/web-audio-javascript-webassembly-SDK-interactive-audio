@@ -1,55 +1,32 @@
-import SuperpoweredModule from '../superpowered.js'
+import { SuperpoweredWebAudio, SuperpoweredTrackLoader } from './superpowered/SuperpoweredWebAudio.js';
 
-var Superpowered = null;
-
-class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
+class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     // runs after the constructor
     onReady() {
-        Superpowered = this.Superpowered;
-        this.posFrames = -1;
-        // allocating some WASM memory for passing audio to the effect
-        this.pcm = Superpowered.createFloatArray(2048 * 2);
         // the star of the show
-        this.distortion = Superpowered.new('GuitarDistortion', Superpowered.samplerate);
+        this.distortion = new this.Superpowered.GuitarDistortion(this.samplerate);
         this.distortion.enabled = true;
+        // the player
+        this.player = new this.Superpowered.AdvancedAudioPlayer(this.samplerate, 2, 2, 0, 0.501, 2, false);
+        SuperpoweredTrackLoader.downloadAndDecode('../track.mp3', this);
     }
 
     onMessageFromMainScope(message) {
-        // did we receive the audio from the main thread?
-        if (message.left && message.right) {
-            // left and right channels are NOT stored in WASM memory
-            this.left = message.left;
-            this.right = message.right;
-
-            this.lengthFrames = Math.min(message.left.length, message.right.length);
-            this.posFrames = 0;
+        if (message.SuperpoweredLoaded) {
+            this.player.openMemory(this.Superpowered.arrayBufferToWASM(message.SuperpoweredLoaded.buffer), false, false);
+            this.player.play();
+            this.sendMessageToMainScope({ loaded: true });
         }
-        if (message.left) delete message.left;
-        if (message.right) delete message.right;
         for (let property in message) {
             if (typeof this.distortion[property] !== 'undefined') this.distortion[property] = message[property];
         }
     }
 
     processAudio(inputBuffer, outputBuffer, buffersize, parameters) {
-        // did we receive the left and right channels already?
-        if (this.posFrames == -1) { // if not, output silence
+        if (!this.player.processStereo(outputBuffer.pointer, false, buffersize, 1)) {
             for (let n = 0; n < buffersize * 2; n++) outputBuffer.array[n] = 0;
-            return;
         }
-
-        // if we're near the end just play from the beginning
-        if (this.posFrames + buffersize >= this.lengthFrames) this.posFrames = 0;
-
-        // copy the audio samples to the WASM memory and step posFrames
-        for (let n = 0, to = buffersize * 2; n < to; n++) {
-            this.pcm.array[n++] = this.left[this.posFrames];
-            this.pcm.array[n] = this.right[this.posFrames++];
-        }
-
-        // actual audio processing
-        this.distortion.process(this.pcm.pointer, outputBuffer.pointer, buffersize);
-        return true;
+        this.distortion.process(outputBuffer.pointer, outputBuffer.pointer, buffersize);
     }
 }
 

@@ -1,13 +1,10 @@
-import SuperpoweredModule from '../superpowered.js'
+import { SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
 
-var Superpowered = null;
-
-class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
+class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     // runs after the constructor
     onReady() {
-        Superpowered = this.Superpowered;
         // the star of the show
-        this.distortion = Superpowered.new('GuitarDistortion', Superpowered.samplerate);
+        this.distortion = new this.Superpowered.GuitarDistortion(this.samplerate);
         this.distortion.enabled = true;
     }
 
@@ -19,7 +16,6 @@ class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
 
     processAudio(inputBuffer, outputBuffer, buffersize, parameters) {
         this.distortion.process(inputBuffer.pointer, outputBuffer.pointer, buffersize);
-        return true;
     }
 }
 

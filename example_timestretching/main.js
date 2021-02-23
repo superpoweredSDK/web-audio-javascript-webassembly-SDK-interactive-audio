@@ -1,8 +1,8 @@
-import SuperpoweredModule from '../superpowered.js'
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
 
-var audioContext = null; // Reference to the audio context.
+var webaudioManager = null; // The SuperpoweredWebAudio helper class managing Web Audio for us.
+var Superpowered = null; // A Superpowered instance.
 var audioNode = null;    // This example uses one audio node only.
-var Superpowered = null; // Reference to the Superpowered module.
 var content = null;      // The <div> displaying everything.
 var pitchShift = 0;      // The current pitch shift value.
 
@@ -42,41 +42,16 @@ function togglePlayback(e) {
     if (button.value == 1) {
         button.value = 0;
         button.innerText = 'PLAY';
-        audioContext.suspend();
+        webaudioManager.audioContext.suspend();
     } else {
         button.value = 1;
         button.innerText = 'PAUSE';
-        audioContext.resume();
+        webaudioManager.audioContext.resume();
     }
 }
 
 function onMessageFromAudioScope(message) {
-    console.log('Message received from the audio node: ' + message);
-}
-
-// when the START button is clicked
-async function start() {
-    content.innerText = 'Creating the audio context and node...';
-    audioContext = Superpowered.getAudioContext(44100);
-    let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-    audioNode = await Superpowered.createAudioNodeAsync(audioContext, currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
-
-    content.innerText = 'Downloading music...';
-    let response = await fetch('track.wav');
-
-    content.innerText = 'Decoding audio...';
-    let rawData = await response.arrayBuffer();
-    audioContext.decodeAudioData(rawData, function(pcmData) { // Safari doesn't support await for decodeAudioData yet
-        // send the PCM audio to the audio node
-        audioNode.sendMessageToAudioScope({
-             left: pcmData.getChannelData(0),
-             right: pcmData.getChannelData(1) }
-        );
-
-        // audioNode -> audioContext.destination (audio output)
-        audioContext.suspend();
-        audioNode.connect(audioContext.destination);
-
+    if (message.loaded) {
         // UI: innerHTML may be ugly but keeps this example small
         content.innerHTML = '\
             <button id="playPause" value="0">PLAY</button>\
@@ -91,17 +66,41 @@ async function start() {
         document.getElementById('pitchMinus').addEventListener('click', changePitchShift);
         document.getElementById('pitchPlus').addEventListener('click', changePitchShift);
         document.getElementById('playPause').addEventListener('click', togglePlayback);
-    });
+    } else console.log('Message received from the audio node: ' + message);
 }
 
-SuperpoweredModule({
-    licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
-    enableAudioTimeStretching: true,
+// when the START button is clicked
+async function start() {
+    content.innerText = 'Creating the audio context and node...';
+    webaudioManager = new SuperpoweredWebAudio(44100, Superpowered);
+    let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    audioNode = await webaudioManager.createAudioNodeAsync(currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
 
-    onReady: function(SuperpoweredInstance) {
-        Superpowered = SuperpoweredInstance;
-        content = document.getElementById('content');
-        content.innerHTML = '<button id="startButton">START</button>';
-        document.getElementById('startButton').addEventListener('click', start);
-    }
-});
+    // audioNode -> audioContext.destination (audio output)
+    webaudioManager.audioContext.suspend();
+    audioNode.connect(webaudioManager.audioContext.destination);
+
+    content.innerText = 'Downloading and decoding music...';
+}
+
+async function loadJS() {
+    // download and instantiate Superpowered
+    Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
+    Superpowered.Initialize({
+        licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
+        enableAudioAnalysis: false,
+        enableFFTAndFrequencyDomain: false,
+        enableAudioTimeStretching: true,
+        enableAudioEffects: true,
+        enableAudioPlayerAndDecoder: true,
+        enableCryptographics: false,
+        enableNetworking: false
+    });
+
+    // display the START button
+    content = document.getElementById('content');
+    content.innerHTML = '<button id="startButton">START</button>';
+    document.getElementById('startButton').addEventListener('click', start);
+}
+
+loadJS();

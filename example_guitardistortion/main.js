@@ -1,8 +1,8 @@
-import SuperpoweredModule from '../superpowered.js'
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
 
-var audioContext = null; // Reference to the audio context.
-var audioNode = null;    // This example uses one audio node only.
+var webaudioManager = null; // The SuperpoweredWebAudio helper class managing Web Audio for us.
 var Superpowered = null; // Reference to the Superpowered module.
+var audioNode = null;    // This example uses one audio node only.
 var content = null;      // The <div> displaying everything.
 
 const presets = {
@@ -62,11 +62,11 @@ function togglePlayback(e) {
     if (button.value == 1) {
         button.value = 0;
         button.innerText = 'START PLAYBACK';
-        audioContext.suspend();
+        webaudioManager.audioContext.suspend();
     } else {
         button.value = 1;
         button.innerText = 'PAUSE';
-        audioContext.resume();
+        webaudioManager.audioContext.resume();
     }
 }
 
@@ -152,41 +152,31 @@ function startUserInterface() {
 }
 
 function onMessageFromAudioScope(message) {
-    console.log('Message received from the audio node: ' + message);
+    if (message.loaded) startUserInterface();
+    else console.log('Message received from the audio node: ' + message);
 }
 
 // when the START WITH GUITAR SAMPLE button is clicked
 async function startSample() {
     content.innerText = 'Creating the audio context and node...';
-    audioContext = Superpowered.getAudioContext(44100);
+    webaudioManager = new SuperpoweredWebAudio(44100, Superpowered);
     let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-    audioNode = await Superpowered.createAudioNodeAsync(audioContext, currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
+    audioNode = await webaudioManager.createAudioNodeAsync(currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
 
-    content.innerText = 'Downloading music...';
-    let response = await fetch('track.wav');
+    // audioNode -> audioContext.destination (audio output)
+    webaudioManager.audioContext.suspend();
+    audioNode.connect(webaudioManager.audioContext.destination);
+    webaudioManager.audioContext.suspend();
 
-    content.innerText = 'Decoding audio...';
-    let rawData = await response.arrayBuffer();
-    audioContext.decodeAudioData(rawData, function(pcmData) { // Safari doesn't support await for decodeAudioData yet
-        // send the PCM audio to the audio node
-        audioNode.sendMessageToAudioScope({
-             left: pcmData.getChannelData(0),
-             right: pcmData.getChannelData(1) }
-        );
-
-        // audioNode -> audioContext.destination (audio output)
-        audioContext.suspend();
-        audioNode.connect(audioContext.destination);
-        startUserInterface();
-    });
+    content.innerText = 'Downloading and decoding music...';
 }
 
 // when the START WITH AUDIO INPUT button is clicked
 async function startInput() {
     content.innerText = 'Creating the audio context and node...';
-    audioContext = Superpowered.getAudioContext(44100);
+    webaudioManager = new SuperpoweredWebAudio(44100, Superpowered);
 
-    let micStream = await Superpowered.getUserMediaForAudioAsync({ 'fastAndTransparentAudio': true })
+    let micStream = await webaudioManager.getUserMediaForAudioAsync({ 'fastAndTransparentAudio': true })
     .catch((error) => {
         // called when the user refused microphone permission
         console.log(error);
@@ -194,22 +184,33 @@ async function startInput() {
     if (!micStream) return;
 
     let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-    audioNode = await Superpowered.createAudioNodeAsync(audioContext, currentPath + '/processor_live.js', 'MyProcessor', onMessageFromAudioScope);
-    let audioInput = audioContext.createMediaStreamSource(micStream);
+    audioNode = await webaudioManager.createAudioNodeAsync(currentPath + '/processor_live.js', 'MyProcessor', onMessageFromAudioScope);
+    let audioInput = webaudioManager.audioContext.createMediaStreamSource(micStream);
     audioInput.connect(audioNode);
-    audioNode.connect(audioContext.destination);
+    audioNode.connect(webaudioManager.audioContext.destination);
+    webaudioManager.audioContext.suspend();
     startUserInterface();
 }
 
-SuperpoweredModule({
-    licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
-    enableAudioEffects: true,
+async function loadJS() {
+    // download and instantiate Superpowered
+    Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
+    Superpowered.Initialize({
+        licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
+        enableAudioAnalysis: false,
+        enableFFTAndFrequencyDomain: false,
+        enableAudioTimeStretching: true,
+        enableAudioEffects: true,
+        enableAudioPlayerAndDecoder: true,
+        enableCryptographics: false,
+        enableNetworking: false
+    });
 
-    onReady: function(SuperpoweredInstance) {
-        Superpowered = SuperpoweredInstance;
-        content = document.getElementById('content');
-        content.innerHTML = '<p>Use this if you just want to listen: <button id="startSample">START WITH GUITAR SAMPLE</button></p><p>Use this if you want to play the guitar live: <button id="startInput">START WITH AUDIO INPUT</button></p>';
-        document.getElementById('startSample').addEventListener('click', startSample);
-        document.getElementById('startInput').addEventListener('click', startInput);
-    }
-});
+    // display the initial UI
+    content = document.getElementById('content');
+    content.innerHTML = '<p>Use this if you just want to listen: <button id="startSample">START WITH GUITAR SAMPLE</button></p><p>Use this if you want to play the guitar live: <button id="startInput">START WITH AUDIO INPUT</button></p>';
+    document.getElementById('startSample').addEventListener('click', startSample);
+    document.getElementById('startInput').addEventListener('click', startInput);
+}
+
+loadJS();

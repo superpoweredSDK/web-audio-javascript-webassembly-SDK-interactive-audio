@@ -22,33 +22,40 @@
 
 <h2>Basics</h2>
 
+<p>Superpowered files:</p>
+
+<dl>
+    <dt>superpowered.wasm</dt><dd>WebAssembly binary.</dd>
+    <dt>SuperpoweredGlue.js (class SuperpoweredGlue)</dt><dd>The JavaScript loader/glue around Superpowered WebAssembly, to be used with importScripts (such as Workers).</dd>
+    <dt>SuperpoweredGlueModule.js</dt><dd>Same as above, but for module import.</dd>
+    <dt>SuperpoweredWebAudio.js (class SuperpoweredWebAudio)</dt><dd>Helper to set up Web Audio context, supports the Audio Worklet and ScriptProcessorNode.</dd>
+    <dt>SuperpoweredTrackLoader.js (class SuperpoweredTrackLoader)</dt><dd>Helper to load and decode audio in the background, to be used with importScripts.</dd>
+    <dt>SuperpoweredTrackLoaderModule.js</dt><dd>Same as above, but for module import.</dd>
+    <dt>SuperpoweredTrackLoaderWorker.js</dt><dd>The Worker used by SuperpoweredTrackLoader.</dd>
+</dl>
+
 <h3>Initialization</h3>
 
 <pre><code class="language-js">
-// Import Superpowered.
-import SuperpoweredModule from './superpowered.js';
+// Most common: import Superpowered and the Superpowered Web Audio helper:
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
 
 // Most major web browsers can not import modules in Worker scripts, therefore the import above may not work.
-// In that case, import Superpowered in a Worker script like this:
-importScripts('./superpowered-worker.js');
+importScripts('./superpowered/SuperpoweredGlue.js');
 
+// Create a SuperpoweredGlue instance and load WebAssembly:
+var Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
 
-// Initializes Superpowered. Returns with a Superpowered instance.
-// Always call this once in your main scope (main thread).
-// Worklets: if using Superpowered in a Worklet, call this in the Worklet as well.
-// Audio Worklets: do not call this in an Audio Worklet.
-var Superpowered = null;
-SuperpoweredModule({
-    licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate', // your license key
-    enableAudioAnalysis: true,          // Enables Analyzer, Waveform and BandpassFilterbank.
-    enableFFTAndFrequencyDomain: false, // Enables FFTComplex, FFTReal and PolarFFT.
-    enableAudioTimeStretching: false,   // Enables TimeStretching.
-    enableAudioEffects: false,          // Enables all effects and the Spatializer.
-
-    onReady: function(SuperpoweredInstance) {
-        Superpowered = SuperpoweredInstance;
-        // stuff you run after Superpowered is initialized
-    }
+// Initialize Superpowered.
+Superpowered.Initialize({
+    licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
+    enableAudioAnalysis: false,
+    enableFFTAndFrequencyDomain: false,
+    enableAudioTimeStretching: true,
+    enableAudioEffects: true,
+    enableAudioPlayerAndDecoder: true,
+    enableCryptographics: false,
+    enableNetworking: false
 });
 </code></pre>
 
@@ -61,23 +68,23 @@ SuperpoweredModule({
 
 <pre><code class="language-js">
 let length = 128;                  // We want the buffer to store 128 floating point numbers.
-let pointer = _malloc(length * 4); // A floating point number is 4 bytes, therefore we allocate length * 4 bytes of memory.
+let pointer = Superpowered.malloc(length * 4); // A floating point number is 4 bytes, therefore we allocate length * 4 bytes of memory.
 // You can use "pointer" to pass audio to most Superpowered APIs.
 
 // Maybe we want to directly manipulate this data from JavaScript as well. Let's create a Float32Array view of this region.
 let arrayView = new Float32Array(
-    Superpowered.HEAPF32.buffer,   // Standard WebAssembly Module access to the Linear Memory buffer as floating point numbers.
-    pointer,                       // The allocated region.
-    length                         // The length of the region.
+    Superpowered.linearMemory, // Standard WebAssembly Module access to the Linear Memory buffer as floating point numbers.
+    pointer,                   // The allocated region.
+    length                     // The length of the region.
 );
 // Now this is possible:
 arrayView[0] = 0.5;
 
 // Deallocate the region when we don't need it anymore.
-_free(pointer);
+Superpowered.free(pointer);
 </code></pre>
 
-<p>The Superpowered module offers some APIs to make this allocation process a little bit easier:</p>
+<p>SuperpoweredGlue offers some APIs to make this allocation process a little bit easier:</p>
 
 <pre><code class="language-js">
 // Total memory consumption in this example: 256 * 4 = 1024 bytes.
@@ -87,26 +94,27 @@ someBuffer.pointer;        // Getting the linear memory index (pointer).
 someBuffer.length;         // Getting the length of the buffer.
 someBuffer.array[0] = 0.5; // Accessing the buffer as a Float32Array.
 
-Superpowered.destroyFloatArray(someBuffer); // Deallocate everything.
+someBuffer.free(); // Deallocate everything.
 </code></pre>
 
 <h3>Web Audio</h3>
 
-<p>Superpowered has helper functions for easier Web Audio initialization. The returned objects are standard Web Audio objects without any quirks. Please note that Web Audio requires a secure context: HTTPS or localhost.</p>
+<p>The SuperpoweredWebAudio class contains helper functions for easier Web Audio initialization. The returned objects are standard Web Audio objects without any quirks. <em>Please note that Web Audio requires a secure context: HTTPS or localhost.</em></p>
 <p>Visit the effects example project to see these in context for better understanding.</p>
 
 <pre><code class="language-js">
-// Returns with a standard AudioContext.
-// This function was made to help with browser-specific quirks.
-// Reference: https://developer.mozilla.org/en-US/docs/Web/API/AudioContext
-var audioContext = Superpowered.getAudioContext(
-    44100 // The minimum sample rate of the AudioContext. The actual sample rate may be equal or higher.
+var webaudioManager = new SuperpoweredWebAudio(
+    44100,       // The minimum sample rate of the AudioContext. The actual sample rate may be equal or higher.
+    Superpowered // The SuperpoweredGlue instance.
 );
+
+// Returns with a standard AudioContext. Reference: https://developer.mozilla.org/en-US/docs/Web/API/AudioContext
+let audioContext = webaudioManager.audioContext;
 
 // Prompts the user for permission to use a media input (typically the microphone) with an audio track and no video tracks. Has no return value.
 // This function was made to help with browser-specific quirks.
 // Reference https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
-Superpowered.getUserMediaForAudio(
+webaudioManager.getUserMediaForAudio(
     {  // navigator.mediaDevices.getUserMedia constraints
         'echoCancellation': false
     },
@@ -123,7 +131,7 @@ Superpowered.getUserMediaForAudio(
 
 // Asynchronous version of getUserMediaForAudio.
 // Returns with a standard MediaStream object or undefined on error.
-let audioInputStream = await Superpowered.getUserMediaForAudioAsync(
+let audioInputStream = await webaudioManager.getUserMediaForAudioAsync(
     {  // navigator.mediaDevices.getUserMedia constraints or "fastAndTransparentAudio" to disable all processing on the audio input
         'fastAndTransparentAudio': true
     },
@@ -136,8 +144,7 @@ if (!audioInputStream) return; // Program flow will reach this point even on err
 // Creates an Audio Worklet (for new browsers) or an audio processing ScriptProcessorNode (for older browsers).
 // This function was made to help with browser-specific quirks and to properly initialize Superpowered in an Audio Worklet context.
 var myAudioNode = null;
-Superpowered.createAudioNode(
-    audioContext,                    // The standard AudioContext instance.
+webaudioManager.createAudioNode(
     '/example_effects/processor.js', // The JavaScript module source of the node.
     'MyProcessor',                   // The registered processor name.
     function(newNode) {
@@ -159,7 +166,7 @@ Superpowered.createAudioNode(
 
 // Asynchronous version of createAudioNode.
 // Returns with a standard AudioNode or ScriptProcessorNode.
-let audioNode = await Superpowered.createAudioNodeAsync(
+let audioNode = await webaudioManager.createAudioNodeAsync(
     audioContext,                    // The standard AudioContext instance.
     '/example_effects/processor.js', // The JavaScript module source of the node.
     'MyProcessor',                   // The registered processor name.
@@ -172,11 +179,11 @@ let audioNode = await Superpowered.createAudioNodeAsync(
 
 <h3>AudioWorkletProcessor</h3>
 
-<p>The easiest way to use Superpowered features in a Web Audio AudioNode is the SuperpoweredModule.AudioWorkletProcessor class.</p>
+<p>The easiest way to use Superpowered features in a Web Audio AudioNode is the SuperpoweredWebAudio.AudioWorkletProcessor class.</p>
 <p>It can be created by createAudioNode (see the example above) and should be loaded from a dedicated .js file, because it's a JS module in modern browsers.</p>
 
 <pre><code class="language-js">
-class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
+class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     onReady() {
         // Runs after the constructor. This is "your" constructor basically.
     }
@@ -549,7 +556,7 @@ Superpowered.PolarFFT(
 
 <pre><code class="language-js">
 // Constructor. Has no additional parameters.
-let mixer = Superpowered.new('StereoMixer');
+let mixer = new Superpowered.StereoMixer();
 
 // Gain per input channel, 8 values (2 per input). Default value for all: 1. Changes between consecutive process() calls are automatically smoothed.
 mixer.inputGain[2] = 0.5; // left side of the second input
@@ -588,7 +595,7 @@ mixer.destruct();
 
 <pre><code class="language-js">
 // Constructor. Has no additional parameters.
-let mixer = Superpowered.new('MonoMixer');
+let mixer = new Superpowered.MonoMixer();
 
 // Gain per input channel. Default value for all: 1. Changes between consecutive process() calls are automatically smoothed.
 mixer.inputGain[2] = 0.5; // third input
@@ -618,7 +625,7 @@ mixer.destruct();
 
 <pre><code class="language-js">
 // Constructor.
-let waveform = Superpowered.new('Waveform',
+let waveform = new Superpowered.Waveform(
     44100, // The sample rate of the audio input.
     60     // The length in seconds of the audio input. It will not be able to process more audio than this. You can change this value in the process() method.
 );
@@ -650,7 +657,7 @@ waveform.destruct();
 
 <pre><code class="language-js">
 // Constructor.
-let filterbank = Superpowered.new('BandpassFilterbank',
+let filterbank = new Superpowered.BandpassFilterbank(
     8,           // The number of bands. Must be a multiply of 8.
     [ 100, 100, 100, 100, 100, 100, 100, 100 ], // Center frequencies of each band in Hz.
     [ 1, 1, 1, 1, 1, 1, 1, 1 ],                 // Widths of each band in octave (1.0 is one octave, 1.0 / 12.0 is one halfnote).
@@ -710,7 +717,7 @@ filterbank.destruct();
 
 <pre><code class="language-js">
 // Constructor.
-let analyzer = Superpowered.new('Analyzer',
+let analyzer = new Superpowered.Analyzer(
     44100, // The sample rate of the audio input.
     60     // The length in seconds of the audio input. The analyzer will not be able to process more audio than this. You can change this value in the process() method.
 );
@@ -786,7 +793,7 @@ let openkeyChordNames = [
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let eq = Superpowered.new('ThreeBandEQ',
+let eq = new Superpowered.ThreeBandEQ(
     44100 // The initial sample rate in Hz.
 );
 
@@ -820,7 +827,7 @@ eq.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let bc = Superpowered.new('Bitcrusher',
+let bc = new Superpowered.Bitcrusher(
     44100 // The initial sample rate in Hz.
 );
 
@@ -852,7 +859,7 @@ bc.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let echo = Superpowered.new('Echo',
+let echo = new Superpowered.Echo(
     44100 // The initial sample rate in Hz.
 );
 
@@ -891,7 +898,7 @@ echo.destruct();
 <p>Simple delay with minimum memory operations.</p>
 
 <pre><code class="language-js">
-let delay = Superpowered.new('Delay',
+let delay = new Superpowered.Delay(
     100,   // Maximum delay in milliseconds. Higher values increase memory usage.
     48000, // Maximum sample rate to support. Higher values increase memory usage.
     1024,  // Maximum number of frames for the process() call. Has minimum effect on memory usage.
@@ -928,7 +935,7 @@ delay.destruct();
 
 <pre><code class="language-js">
 // Constructor.
-let flanger = Superpowered.new('Flanger',
+let flanger = new Superpowered.Flanger(
     44100 // The initial sample rate in Hz.
 );
 
@@ -968,7 +975,7 @@ flanger.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let gate = Superpowered.new('Gate',
+let gate = new Superpowered.Gate(
     44100 // The initial sample rate in Hz.
 );
 
@@ -1001,7 +1008,7 @@ gate.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let roll = Superpowered.new('Roll',
+let roll = new Superpowered.Roll(
     44100, // The initial sample rate in Hz.
     48000  // The maximum sample rate in Hz to support. The higher the larger the memory usage.
 );
@@ -1035,7 +1042,7 @@ roll.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let reverb = Superpowered.new('Reverb',
+let reverb = new Superpowered.Reverb(
     44100, // The initial sample rate in Hz.
     48000  // Maximum sample rate (affects memory usage, the lower the smaller).
 );
@@ -1074,7 +1081,7 @@ reverb.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let whoosh = Superpowered.new('Whoosh',
+let whoosh = new Superpowered.Whoosh(
     44100 // The initial sample rate in Hz.
 );
 
@@ -1106,7 +1113,7 @@ whoosh.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let compressor = Superpowered.new('Compressor',
+let compressor = new Superpowered.Compressor(
     44100 // The initial sample rate in Hz.
 );
 
@@ -1147,7 +1154,7 @@ compressor.destruct();
 
 <pre><code class="language-js">
 Constructor. Enabled is false by default.
-let limiter = Superpowered.new('Limiter',
+let limiter = new Superpowered.Limiter(
     44100 // The initial sample rate in Hz.
 );
 
@@ -1183,7 +1190,7 @@ limiter.destruct();
 
 <pre><code class="language-js">
 // Constructor.
-let clipper = Superpowered.new('Clipper');
+let clipper = new Superpowered.Clipper();
 
 clipper.thresholdDb = -6; // Audio below this will be unchanged, above this will be attenuated. Limited between -100 and 0.
 clipper.maximumDb = 0;    // Audio will reach 1.0f at this point. Limited between -48 and 48.
@@ -1210,7 +1217,7 @@ y[n] = (b0/a0)*x[n] + (b1/a0)*x[n-1] + (b2/a0)*x[n-2] - (a1/a0)*y[n-1] - (a2/a0)
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let filter = Superpowered.new('Filter',
+let filter = new Superpowered.Filter(
     Superpowered.FilterType.Resonant_Lowpass, // The initial filter type.
     44100                                     // The initial sample rate in Hz.
 );
@@ -1276,7 +1283,7 @@ filter.destruct();
 
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
-let gd = Superpowered.new('GuitarDistortion',
+let gd = new Superpowered.GuitarDistortion(
     44100                                     // The initial sample rate in Hz.
 );
 
@@ -1320,7 +1327,7 @@ gd.destruct();
 <p>The spatializer class also has one Global Spatializer Reverb instance to simulate "room sound". It collects audio from all Spatializer instances and puts a reverb on the signal.</p>
 
 <pre><code class="language-js">
-let spatializer = Superpowered.new('Spatializer',
+let spatializer = new Superpowered.Spatializer(
     44100 // The initial sample rate in Hz.
 );
 
@@ -1373,7 +1380,7 @@ spatializer.destruct();
 
 <pre><code class="language-js">
 // Constructor. Has no additional parameters.
-let resampler = Superpowered.new('Resampler');
+let resampler = new Superpowered.Resampler();
 
 // The rate of the resampler. Default: 1. If rate = 1, process() is "transparent" without any effect on audio quality.
 resampler.rate = 1.1;
@@ -1420,7 +1427,7 @@ resampler.destruct();
 
 <pre><code class="language-js">
 // Constructor.
-let fd = Superpowered.new('FrequencyDomain',
+let fd = new Superpowered.FrequencyDomain(
     11, // FFT log size, between 8 and 13 (FFT 256 - 8192). The default value (11) provides a good compromise in precision (~22 Hz per bin), CPU load and time-domain event sensitivity.
     4   // [Maximum overlap]:1 (default: 4:1).
 );
@@ -1488,7 +1495,7 @@ fd.destruct();
 
 <pre><code class="language-js">
 // Constructor.
-let ts = Superpowered.new('TimeStretching',
+let ts = new Superpowered.TimeStretching(
     44100, // The initial sample rate in Hz.
     0.5,   // The minimum value of rate. For example: if the rate will never go below 0.5, minimumRate = 0.5 will save significant computing power and memory. Minimum value of this: 0.01.
     1      // Valid values are: 0 (best to save CPU with slightly lower audio quality), 1 (best for DJ apps, modern and "complete" music), 2 (best for instrumental loops and single instruments).
@@ -1537,6 +1544,613 @@ ts.reset();
 
 // Destructor (to free up memory).
 ts.destruct();
+</code></pre>
+
+<h2>Loading Audio</h2>
+
+<p>Due to nature of most JavaScript runtimes (such as no control over thread scheduling or no direct disk access), loading audio with Superpowered is a little bit different vs. native. <em>The entire audio file must be loaded into the WebAssembly Linear Memory memory</em> first, then the Superpowered Decoder can read and decode it.</p>
+<p>You can either use the SuperpoweredTrackLoader.downloadAndDecode API for ease of use, or the Superpowered Decoder for advanced features.</p>
+
+<h3>SuperpoweredTrackLoader</h3>
+
+<p>This object can download and decode an audio file in a single easy step. It will automatically create a Worker (a background-thread) for the downloading and decoding process, so it doesn't put any load on the current Worker or the main thread. It can operate in Worker and Audio Worklet contexts too.</p>
+
+<p>Use this syntax while using SuperpoweredWebAudio.AudioWorkletProcessor:</p>
+
+<pre><code class="language-js">
+SuperpoweredTrackLoader.downloadAndDecode('./music/track.mp3', this);
+
+onMessageFromMainScope(message) {
+    if (message.SuperpoweredLoaded) {
+        let buffer = message.SuperpoweredLoaded.buffer; // ArrayBuffer with the downloaded and decoded audio in AudioInMemory format.
+        let url = message.SuperpoweredLoaded.url;       // The url of the audio file ('./music/track.mp3' in this example).
+
+        // Player example loading the contents of the buffer:
+        this.player.openMemory(this.Superpowered.arrayBufferToWASM(message.SuperpoweredLoaded.buffer), false, false);
+    }
+}
+</code></pre>
+
+<p>Use this syntax in a regular Worker:</p>
+
+<pre><code class="language-js">
+SuperpoweredTrackLoader.downloadAndDecode('./music/track.mp3', self.onmessage);
+
+self.onmessage = function(message) {
+    if (message.SuperpoweredLoaded) {
+        let buffer = message.SuperpoweredLoaded.buffer; // ArrayBuffer with the downloaded and decoded audio in AudioInMemory format.
+        let url = message.SuperpoweredLoaded.url;       // The url of the audio file ('./music/track.mp3' in this example).
+
+        // Player example loading the contents of the buffer:
+        this.player.openMemory(this.Superpowered.arrayBufferToWASM(message.SuperpoweredLoaded.buffer), false, false);
+    }
+}
+</code></pre>
+
+<p>The result is an ArrayBuffer with the downloaded and decoded audio in the AudioInMemory format. The output can be loaded by the AdvancedAudioPlayer.</p>
+
+<h3>Decoder</h3>
+
+<p>Audio file decoder. Provides raw PCM audio from various compressed formats. Independent from the standard <a href="https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/decodeAudioData">decodeAudioData</a> Web Audio API. Can be used in Workers and Worklets too.</p>
+<p>Supported file types:</p>
+<ul>
+    <li>Stereo or mono pcm WAV and AIFF (16-bit int, 24-bit int, 32-bit int or 32-bit IEEE float).</li>
+    <li>MP3: MPEG-1 Layer III (sample rates: 32000 Hz, 44100 Hz, 48000 Hz). MPEG-2 Layer III is not supported (mp3 with sample rates below 32000 Hz).</li>
+    <li>AAC or HE-AAC in M4A container (iTunes) or ADTS container (.aac).</li>
+</ul>
+
+<pre><code class="language-js">
+
+// Decodes an entire audio file in memory to AudioInMemory format in a single call. The output can be loaded by the AdvancedAudioPlayer.
+let pointerToAudioInMemory = Superpowered.Decoder.decodeToAudioInMemory(
+    pointer, // Pointer to an audio file loaded onto the WebAssembly Linear Memory.
+    1000000  // The audio file length in bytes.
+);
+
+// Constructor. Has no additional parameters.
+let decoder = new Superpowered.Decoder();
+
+// Opens a memory location in Superpowered AudioInMemory format for decoding.
+let openErrorCode = decoder.openMemory(
+    pointer, // Pointer to information in Superpowered AudioInMemory format on the WebAssembly Linear Memory.
+    false    // If true, it opens the file for fast metadata reading only, not for decoding audio.
+);
+
+// Opens a memory location for decoding.
+let openErrorCode = decoder.openAudioFileInMemory(
+    pointer, // Pointer to an audio file loaded onto the WebAssembly Linear Memory.
+    1000000, // The audio file length in bytes.
+    false    // If true, it opens the file for fast metadata reading only, not for decoding audio.
+);
+
+// Error codes for the openMemory() method:
+Superpowered.Decoder.OpenSuccess;
+Superpowered.Decoder.OpenError_OutOfMemory; // Some memory allocation failed. Recommended action: check for memory leaks.
+Superpowered.Decoder.OpenError_PathIsNull; // Path is NULL.
+Superpowered.Decoder.OpenError_ID3VersionNotSupported; // ID3 version 2.2, 2.3 and 2.4 are supported only.
+Superpowered.Decoder.OpenError_ID3ReadError; // File read error while reading the ID3 tag.
+Superpowered.Decoder.OpenError_FileFormatNotRecognized; // The decoder is not able to decode this file format.
+Superpowered.Decoder.OpenError_FileTooShort; // The file has just a few bytes of data.
+Superpowered.Decoder.OpenError_ImplementationError0; // Should never happen. But if it does, please let us know.
+Superpowered.Decoder.OpenError_ImplementationError1; // Should never happen. But if it does, please let us know.
+Superpowered.Decoder.OpenError_ImplementationError2; // Should never happen. But if it does, please let us know.
+
+// Returns with a human readable error string.
+let pointer = Superpowered.Decoder.statusCodeToString(
+    openErrorCode // The error code.
+)
+
+// Returns with how many frames are in one chunk of the source file. For example: MP3 files store 1152 audio frames in a chunk.
+let fc = decoder.getFramesPerChunk();
+
+// Decodes audio.
+let decodeErrorCode = decoder.decodeAudio(
+    pointer, // Pointer to 16-bit signed integer numbers. The output. Must be at least numberOfFrames * 4 + 16384 bytes big.
+    fc       // The requested number of frames. Should NOT be less than the value returned by getFramesPerChunk().
+);
+
+// Error codes for the decodeAudio(), getAudioStartFrame() and getAudioEndFrame() methods:
+Superpowered.Decoder.EndOfFile; // End-of-file reached.
+Superpowered.Decoder.BufferingTryAgainLater; // Buffering (waiting for the network to pump enough data).
+Superpowered.Decoder.Error; // Decoding error.
+
+// Returns with the duration of the current file in frames.
+// Duration may change after each decode() or seekTo(), because some audio formats doesn't contain precise length information.
+let df = decoder.getDurationFrames();
+
+// Returns with the duration of the current file in seconds.
+// Duration may change after each decode() or seekTo(), because some audio formats doesn't contain precise length information.
+let ds = decoder.getDurationSeconds();
+
+// Returns with the current position in frames. The postion may change after each decode() or seekTo().
+let pos = decoder.getPositionFrames();
+
+// Returns with the sample rate of the current file.
+let sr = decoder.getSamplerate();
+
+// Returns with the format of the current file.
+let f = decoder.getFormat();
+
+// File/decoder formant constants:
+Superpowered.Decoder.Format_MP3; // MP3
+Superpowered.Decoder.Format_AAC; // AAC, HE-AAC
+Superpowered.Decoder.Format_AIFF; // AIFF
+Superpowered.Decoder.Format_WAV; // WAV
+
+// Jumps to the specified position's chunk (frame) beginning.
+// Some codecs (such as MP3) contain audio in chunks (frames). This method will not jump precisely to the specified position, but to the chunk's beginning the position belongs to.
+// Returns with success (true) or failure (false).
+let success = decoder.setPositionQuick(
+    10052 // The requested position in frames.
+);
+
+// Jumps to a specific position. This method is a little bit slower than setPositionQuick().
+// Returns with success (true) or failure (false).
+let success = decoder.setPositionPrecise(
+    10052 // The requested position in frames.
+);
+
+// Detects silence at the beginning. This function changes the position!
+// The return value can be:
+// - A positive number or zero: the frame index where audio starts.
+// - Superpowered.Decoder.BufferingTryAgainLater: the decoder needs more data to be downloaded. Retry getAudioStartFrame() or getAudioEndFrame() later (it's recommended to wait at least 0.1 seconds).
+// - Superpowered.Decoder.NetworkError: network (download) error.
+// - Superpowered.Decoder.Error: internal decoder error.
+let start = decoder.getAudioStartFrame(
+    0, // Limit frames. How far to search for. 0 means "the entire audio file".
+    0 // Loudness threshold in decibel. 0 means "any non-zero audio". The value -49 is useful for vinyl rips having vinyl noise (crackles).
+);
+
+// Detects silence at the end. This function changes the position!
+// The return value can be:
+// - A positive number or zero: the frame index where audio ends.
+// - Superpowered.Decoder.BufferingTryAgainLater: the decoder needs more data to be downloaded. Retry getAudioEndFrame() later (it's recommended to wait at least 0.1 seconds).
+// - Superpowered.Decoder.NetworkError: network (download) error.
+// - Superpowered.Decoder.Error: internal decoder error.
+let end = decoder.getAudioEndFrame(
+    0, // Limit frames. How far to search for from the end (the duration in frames). 0 means "the entire audio file".
+    0 // Loudness threshold in decibel. 0 means "any non-zero audio". The value -49 is useful for vinyl rips having vinyl noise (crackles).
+);
+
+// Parses all ID3 frames. Do not use startReadingID3/readNextID3Frame after this.
+decoder.parseAllID3Frames(
+    true, // Parsing ID3 image frames is significantly slower than parsing other frames. Set this to true if not interested in image information to save CPU.
+    16384, // The maximum frame size in bytes to retrieve if the decoder can not memory map the entire audio file. Affects memory usage. Useful to skip large payloads (such as images).
+);
+
+// Starts reading ID3 frames. Use readNextID3Frame() in an iteration after this.
+decoder.startParsingID3Frames(
+    true, // Parsing ID3 image frames is significantly slower than parsing other frames. Set this to true if not interested in image information to save CPU.
+    16384, // The maximum frame size in bytes to retrieve if the decoder can not memory map the entire audio file. Affects memory usage. Useful to skip large payloads (such as images).
+);
+
+// Reads the next ID3 frame and returns with its data size or -1 if finished reading.
+let frameSizeBytes = decoder.readNextID3Frame();
+
+// Returns with the current ID3 frame name (four char). To be used with readNextID3Frame().
+let frameName = decoder.getID3FrameName();
+
+// Returns with the raw data of the current ID3 frame. To be used with readNextID3Frame().
+let pointerToFrame = decoder.getID3FrameData();
+
+// Returns with the current ID3 frame data length.
+let frameDataLengthBytes = decoder.getID3FrameDataLengthBytes();
+
+// Returns with the text inside the current ID3 frame. To be used with readNextID3Frame(). Use it for frames containing text only!
+// Returns a pointer to the text in UTF-8 encoding (you take ownership on the data, don't forget to free() when done to prevent memory leaks), or NULL if empty.
+let pointer = decoder.getID3FrameAsString(
+    0 // Offset. Parse from this byte index.
+);
+
+// Returns with the contents "best" artist tag (TP1-4, TPE1-4, QT atoms). May return NULL.
+// Call this after parseAllID3Frames() OR finished reading all ID3 frames with readNextID3Frame().
+let pointer = decoder.getArtist(
+    false // Take ownership. For advanced use. If true, you take ownership on the data (don't forget to free() when done to prevent memory leaks).
+);
+
+// Returns with the contents "best" title tag (TT1-3, TIT1-3, QT atoms). May return NULL.
+// Call this after parseAllID3Frames() OR finished reading all ID3 frames with readNextID3Frame().
+let pointer = decoder.getTitle(
+    false // Take ownership. For advanced use. If true, you take ownership on the data (don't forget to free() when done to prevent memory leaks).
+);
+
+// Returns with the contents of the TALB tag (or QT atom). May return NULL.
+// Call this after parseAllID3Frames() OR finished reading all ID3 frames with readNextID3Frame().
+let pointer = decoder.getAlbum(
+    false // Take ownership. For advanced use. If true, you take ownership on the data (don't forget to free() when done to prevent memory leaks).
+);
+
+// Returns with the track index (track field or TRCK).
+// Call this after parseAllID3Frames() OR finished reading all ID3 frames with readNextID3Frame().
+let ti = decoder.getTrackIndex();
+
+// Returns with the contents "best" image tag (PIC, APIC, QT atom). May return NULL.
+// Call this after parseAllID3Frames() OR finished reading all ID3 frames with readNextID3Frame().
+let pointer = decoder.getImage(
+    false // Take ownership. For advanced use. If true, you take ownership on the data (don't forget to free() when done to prevent memory leaks).
+);
+
+// Returns with the the size of the image returned by getImage(). May return NULL.
+// Call this after parseAllID3Frames() OR finished reading all ID3 frames with readNextID3Frame().
+let imageSizeBytes = decoder.getImageSizeBytes();
+
+// Returns with the bpm value of the "best" bpm tag (TBP, TBPM, QT atom). May return 0.
+// Call this after parseAllID3Frames() OR finished reading all ID3 frames with readNextID3Frame().
+let bpm = decoder.getBPM();
+
+// Destructor (to free up memory).
+decoder.destruct();
+</code></pre>
+
+<h2>Playing Audio</h2>
+
+<h3>AdvancedAudioPlayer</h3>
+
+<p>High performance advanced audio player with:</p>
+<ul>
+    <li>time-stretching and pitch shifting,</li>
+    <li>beat and tempo sync,</li>
+    <li>scratching,</li>
+    <li>tempo bend,</li>
+    <li>looping,</li>
+    <li>slip mode,</li>
+    <li>fast seeking (cached points),</li>
+    <li>momentum and jog wheel handling,</li>
+    <li>0 latency, real-time operation.</li>
+</ul>
+
+<p>Can be used in a real-time audio processing context, but can not be used for offline processing. In contrast to its native version, this web version can only read the output of the SuperpoweredTrackLoader.</p>
+
+<pre><code class="language-js">
+// Creates a player instance.
+let player = new Superpowered.AdvancedAudioPlayer(
+    48000, // The initial sample rate of the player output in hz.
+    2,     // How many positions can be cached in the memory. Jumping to a cached point happens with zero latency. Loops are automatically cached.
+    2,     // The number of seconds to buffer internally for playback and cached points. Minimum 2, maximum 60. Default: 2.
+    0,     // The number of seconds of silence in the negative direction, before the beginning of the track.
+    0.501, // Will not time-stretch but resample below this playback rate. Default: 0.501f (the recommended value for low CPU load on older mobile devices, such as the first iPad). Will be applied after changing playbackRate or scratching. Default: 0.501f
+    2,     // Will not time-stretch but resample above this playback rate. Default: 2.0f (the recommended value for low CPU load on older mobile devices, such as the first iPad). Will be applied after changing playbackRate or scratching.
+    false  // If true and a Native Instruments STEMS file is loaded, output 4 stereo channels. Default: false (stereo master mix output).
+);
+
+player.outputSamplerate = 48000;              // The player output sample rate in Hz.
+player.timeStretching = true;                 // Enable/disable time-stretching. Default: true.
+player.formantCorrection = false;             // Amount of formant correction, between 0 (none) and 1 (full). Default: 0.
+player.originalBPM = 120.3;                   // The original bpm of the current music. There is no auto-bpm detection inside, this must be set to a correct value for syncing. Maximum 300. A value below 20 will be automatically set to 0. Default: 0 (no bpm value known).
+player.fixDoubleOrHalfBPM = false;            // If true and playbackRate is above 1.4f or below 0.6f, it will sync the tempo as half or double. Default: false.
+player.firstBeatMs = 50.24;                   // Tells where the first beat is (the beatgrid starts). Must be set to a correct value for syncing. Default: 0.
+player.defaultQuantum = 4;                    // Sets the quantum for quantized synchronization. Example: 4 means 4 beats.
+player.syncToBpm = 130.14;                    // A bpm value to sync with. Use 0.0f for no syncing.
+player.syncToMsElapsedSinceLastBeat = 89.445; // The number of milliseconds elapsed since the last beat on audio the player has to sync with. Use -1.0 to ignore.
+player.syncToPhase = 0.2344;                  // Used for quantized synchronization. The phase to sync with.
+player.syncToQuantum = 8;                     // Used for quantized synchronization. The quantum to sync with.
+player.pitchShiftCents = 0;                   // Pitch shift cents, from -2400 (two octaves down) to 2400 (two octaves up). Use values representing notes (multiply of 100), between -1200 and 1200 for low CPU load. Default: 0 (no pitch shift).
+player.loopOnEOF = true;                      // If true, jumps back and continues playback. If false, playback stops. Default: false.
+player.reverseToForwardAtLoopStart = true;    // If this is true with playing backwards and looping, then reaching the beginning of the loop will change playback direction to forwards. Default: false.
+player.timeStretchingSound = 1;               // The sound parameter of the internal TimeStretching instance.
+player.playbackRate = 1.05;                   // The playback rate. Must be positive and above 0.00001. Default: 1.
+
+Superpowered.AdvancedAudioPlayer.MaxPlaybackRate; // The maximum playback rate or scratching speed: 20.
+
+// Opens a memory location in Superpowered AudioInMemory format, with playback paused.
+// Playback rate, pitchShift, timeStretching and syncMode are NOT changed if you open a new file.
+player.openMemory(
+    pointer, // Pointer to a location in WebAssembly Linear Memory. Data in the Superpowered AudioInMemory format.
+    false,   // If true, the player will set the position to skip the initial digital silence of the audio file (up to 10 seconds).
+    false    // If true, the player will check the length of the digital silence at the end of the audio file.
+);
+
+// Opens a memory location, with playback paused.
+// Playback rate, pitchShift, timeStretching and syncMode are NOT changed if you open a new file.
+player.openPCM16AudioInMemory(
+    pointer, // Pointer to 16-bit integer numbers, raw stereo interleaved pcm audio.
+    44100,   // The sample rate in Hz. Valid from 8192 to 384000.
+    1000000, // The duration of the audio in frames.
+    false,   // If true, the player will set the position to skip the initial digital silence of the audio file (up to 10 seconds).
+    false    // If true, the player will check the length of the digital silence at the end of the audio file.
+);
+
+// Returns with the latest player event. This method should be used in a periodically running code, at one place only, because it returns a specific event just once per open() call.
+let event = player.getLatestEvent();
+
+// If getLatestEvent returns with OpenFailed, retrieve the error code or HTTP status code here.
+let ec = player.getOpenErrorCode();
+
+// Player events.
+Superpowered.AdvancedAudioPlayer.PlayerEvent_None;       // Open was not called yet.
+Superpowered.AdvancedAudioPlayer.PlayerEvent_Opening;    // Trying to open the content.
+Superpowered.AdvancedAudioPlayer.PlayerEvent_OpenFailed; // Failed to open the content.
+Superpowered.AdvancedAudioPlayer.PlayerEvent_Opened;     // Successfully opened the content, playback can start.
+
+// Returns with a human readable error string.
+let pointer = Superpowered.AdvancedAudioPlayer.statusCodeToString(
+    ec // The error code.
+)
+
+// Returns true if end-of-file has been reached recently (will never indicate end-of-file if loopOnEOF is true). This method should be used in a periodically running code at one place only, because it returns a specific end-of-file event just once.
+let eof = player.eofRecently();
+
+player.syncMode = Superpowered.AdvancedAudioPlayer.SyncMode_TempoAndBeat; // The current sync mode (off, tempo, or tempo+beat). Default: off.
+
+// Synchronization modes.
+Superpowered.AdvancedAudioPlayer.SyncMode_None;         // No synchronization.
+Superpowered.AdvancedAudioPlayer.SyncMode_Tempo;        // Sync tempo only.
+Superpowered.AdvancedAudioPlayer.SyncMode_TempoAndBeat; // Sync tempo and beat.
+
+// Indicates if the player is waiting for data (such as waiting for a network download).
+let waiting = player.isWaitingForBuffering();
+
+// Returns with the length of the digital silence at the beginning of the file if open...() was called with skipSilenceAtBeginning = true, 0 otherwise.
+let start = player.getAudioStartMs();
+
+// Returns with the length of the digital silence at the end of the file if open...() was called with measureSilenceAtEnd = true, 0 otherwise.
+let end = player.getAudioEndMs();
+
+// The current playhead position in milliseconds. Not changed by any pending setPosition() or seek() call, always accurate regardless of time-stretching and other transformations.
+let ms = player.getPositionMs();
+
+// The current position in milliseconds, immediately updated after setPosition() or seek(). Use this for UI display.
+let ms = player.getDisplayPositionMs();
+
+// Similar to getDisplayPositionMs(), but as a percentage (0 to 1).
+let p = player.getDisplayPositionPercent();
+
+// Similar to getDisplayPositionMs(), but as seconds elapsed.
+let sec = player.getDisplayPositionSeconds();
+
+// The duration of the current track in milliseconds. Returns UINT_MAX for live streams.
+let durms = player.getDurationMs();
+
+// The duration of the current track in seconds. Returns UINT_MAX for live streams.
+let dursec = player.getDurationSeconds();
+
+// Starts playback immediately without any synchronization.
+player.play();
+
+// Starts beat or tempo synchronized playback.
+player.playSynchronized();
+
+// Starts playback at a specific position. isPlaying() will return false and the position will not be updated until this function succeeds starting playback at the specified position.
+// You can call this in a real-time thread (audio processing callback) with a continuously updated time for a precise on-the-fly launch.
+player.playSynchronizedToPosition(
+    123454 // Start position in milliseconds.
+);
+
+// Pause playback. There is no need for a "stop" method, this player is very efficient with the battery and has no significant "stand-by" processing.
+player.pause(
+    0, // Momentum in seconds. 0 means to pause immediately.
+    0  // Enable slip mode for a specific amount of time, or 0 to not slip.
+);
+
+// Toggle play/pause (no synchronization).
+player.togglePlayback();
+
+// Indicates if the player is playing or paused.
+let playing = player.isPlaying();
+
+// Simple seeking to a percentage.
+player.seek(
+    0.1 // The position in percentage.
+);
+
+// Precise seeking.
+player.setPosition(
+    1000,  // Position in milliseconds.
+    false, // If true, stops playback.
+    true,  // If the value above is false, makes a beat-synced start possible.
+    false, // If true and using quantized synchronization, will use the defaultQuantum instead of the syncToQuantum.
+    false  // Wait or start immediately when synchronized.
+);
+
+// Caches a position for zero latency seeking.
+player.cachePosition(
+    2000, // Position in milliseconds.
+    255,  // Position identification number. Use this to provide a custom identifier, so you can overwrite the same point later. Use 255 for a point with no identifier.
+);
+
+// Processes audio, stereo version. If the return value is true, the buffer has audio output from the player. If false, then the contents of buffer were not changed (typically happens when the player is paused).
+// Duration may change to a more precise value after this, because some file formats have no precise duration information.
+let notSilence = player.processStereo(
+    outputPointer, // Pointer to floating point numbers. 32-bit interleaved stereo input/output buffer. Should be numberOfFrames * 8 + 64 bytes big.
+    false,         // If true, the player output will be mixed with the contents of buffer. If false, the contents of buffer will be overwritten with the player output.
+    128,           // The number of frames requested.
+    1              // Volume. 0 is silence, 1 is "original volume". Changes are automatically smoothed between consecutive processes.
+);
+
+// Processes audio, 8 channels version. If the return value is true, the buffer has audio output from the player. If false, then the contents of buffer were not changed (typically happens when the player is paused).
+// Duration may change to a more precise value after this, because some file formats have no precise duration information.
+let notSilence = player.process8Channels(
+    outputPointer0, // Pointer to floating point numbers. 32-bit interleaved stereo input/output buffer for the 1st stereo channels. Should be numberOfFrames * 8 + 64 bytes big.
+    outputPointer1, // Pointer to floating point numbers. 32-bit interleaved stereo input/output buffer for the 2nd stereo channels. Should be numberOfFrames * 8 + 64 bytes big.
+    outputPointer2, // Pointer to floating point numbers. 32-bit interleaved stereo input/output buffer for the 3rd stereo channels. Should be numberOfFrames * 8 + 64 bytes big.
+    outputPointer3, // Pointer to floating point numbers. 32-bit interleaved stereo input/output buffer for the 4th stereo channels. Should be numberOfFrames * 8 + 64 bytes big.
+    false,          // If true, the player output will be added to the contents of buffers. If false, the contents of buffers will be overwritten with the player output.
+    128,            // The number of frames requested.
+    1,              // Volume for buffer0. 0 is silence, 1 is "original volume". Changes are automatically smoothed between consecutive processes.
+    1,              // Volume for buffer1. 0 is silence, 1 is "original volume". Changes are automatically smoothed between consecutive processes.
+    1,              // Volume for buffer2. 0 is silence, 1 is "original volume". Changes are automatically smoothed between consecutive processes.
+    1               // Volume for buffer3. 0 is silence, 1 is "original volume". Changes are automatically smoothed between consecutive processes.
+);
+
+// Returns true if a STEMS file was loaded (and the player was initialized with enableStems == true).
+let stems = player.isStems();
+
+// Performs the last stage of STEMS processing, the master compressor and limiter. Works only if a STEMS file was loaded.
+player.processSTEMSMaster(
+    input  // Pointer to floating point numbers. 32-bit interleaved stereo input buffer.
+    output // Pointer to floating point numbers. 32-bit interleaved stereo output buffer.
+    128,   // The number of frames to process.
+    1      // Volume. 0 is silence, 1 is "original volume". Changes are automatically smoothed between consecutive processes.
+);
+
+// Returns with a stem's name if a STEMS file was loaded, NULL otherwise.
+let pointer = player.getStemName(
+    0 // The index of the stem.
+);
+
+// Returns with a stem's color if a STEMS file was loaded, NULL otherwise.
+let pointer = player.getStemColor(
+    0 // The index of the stem.
+);
+
+// The current bpm of the track (as changed by the playback rate).
+let bpm = player.getCurrentBpm();
+
+// How many milliseconds elapsed since the last beat.
+let ms = player.getMsElapsedSinceLastBeat();
+
+// Which beat has just happened. Possible values:
+// 0        : unknown
+// 1 - 1.999: first beat
+// 2 - 2.999: second beat
+// 3 - 3.999: third beat
+// 4 - 4.999: fourth beat
+let i = player.getBeatIndex();
+
+// Returns with the current phase for quantized synchronization.
+let phase = player.getPhase();
+
+// Returns with the current quantum for quantized synchronization.
+let quantum = player.getQuantum();
+
+// Returns with the distance (in milliseconds) to a specific quantum and phase for quantized synchronization.
+let ms = player.getMsDifference(
+    0.5, // The phase to calculate against.
+    4    // The quantum to calculate against.
+);
+
+// If the player is waiting to a synchronization event (such as synchronized playback start or restarting a loop), the return value indicates the time remaining in milliseconds (continously updated). 0 means not waiting to such event.
+let ms = player.getMsRemainingToSyncEvent();
+
+// Loop from a start point to some length.
+player.loop(
+    0,     // Loop from this milliseconds.
+    1100,  // Loop length in milliseconds.
+    true,  // If the playhead is within the loop, jump to the start or not.
+    1,     // Position identifier. Looping caches startMs, therefore you can specify an identifier (or set to 255 if you don't care).
+    true,  // Beat-synced start (true) or immediate (false).
+    0,     // Number of times to loop. 0 means: until exitLoop() is called.
+    false, // If true and using quantized synchronization, will use the defaultQuantum instead of the syncToQuantum.
+    false  // Wait (true) or start immediately (false) when synchronized.
+);
+
+// Loop between a start and end points.
+player.loopBetween(
+    0,     // Loop from this milliseconds.
+    4000,  // Loop to this milliseconds.
+    true,  // If the playhead is within the loop, jump to the start or not.
+    1,     // Position identifier. Looping caches startMs, therefore you can specify an identifier (or set to 255 if you don't care).
+    true,  // Beat-synced start (true) or immediate (false).
+    0,     // Number of times to loop. 0 means: until exitLoop() is called.
+    false, // If true and using quantized synchronization, will use the defaultQuantum instead of the syncToQuantum.
+    false  // Wait (true) or start immediately (false) when synchronized.
+);
+
+// Exit from the current loop.
+player.exitLoop(
+    false // If true, synchronized start or re-synchronization after the loop exit.
+);
+
+// Indicates if looping is enabled.
+let looping = player.isLooping();
+
+// Returns true if a position is inside the current loop.
+let inside = player.msInLoop(
+    150 // The position in milliseconds.
+);
+
+// Returns with the position of the closest beat.
+let ms = player.closestBeatMs(
+    6002, // The position in milliseconds where to find the closest beat.
+    0     // Set to 1-4 to retrieve the position of a specific beat index relative to ms, or 0 for any beat index.
+);
+
+// Returns with the beat index of the closest beat.
+let bi = player.closestBeatIndex(
+    50 // The position in milliseconds where to find the closest beat.
+);
+
+// Sets playback direction.
+player.setReverse(
+    false, // True: reverse. False: forward.
+    0      // Enable slip mode for a specific amount of time, or 0 to not slip.
+);
+
+// If true, the player is playing backwards.
+let rev = player.isReverse();
+
+// Starts on changes pitch bend (temporary playback rate change).
+player.pitchBend(
+    0.1,   // The maximum playback rate range for pitch bend, should be between 0.01 and 0.3 (1% and 30%).
+    false, // Use time-stretching for pitch bend or not (false makes it "audible").
+    true,  // True: faster, false: slower.
+    500    // How long to maintain the pitch bend state in milliseconds. A value >= 1000 will hold until endContinuousPitchBend is called.
+);
+
+// Ends pitch bend.
+player.endContinuousPitchBend();
+
+// Returns with the distance (in milliseconds) to the beatgrid while using pitch bend for correction.
+let ms = player.getBendOffsetMs();
+
+// Reset the pitch bend offset to the beatgrid to zero.
+player.resetBendMsOffset();
+
+// Indicates if returning from scratching or reverse playback will maintain the playback position as if the player had never entered into scratching or reverse playback.
+let slip = player.isPerformingSlip();
+
+// "Virtual jog wheel" or "virtual turntable" handling.
+player.jogTouchBegin(
+    300, // Sets the sensitivity of the virtual wheel. Use around 2300 for pixel-perfect touchscreen waveform control.
+    Superpowered.AdvancedAudioPlayer.Jogmode_Scratch, // Jog wheel mode (scratching, pitch bend, or parameter set in the 0-1 range).
+    1000, // Enables slip mode for a specific amount of time for scratching, or 0 to not slip.
+);
+
+// A jog wheel should send some "ticks" with the movement. A waveform's movement in pixels for example.
+player.jogTick(
+    600,   // The ticks value.
+    true,  // Use time-stretching for pitch bend or not (false makes it "audible").
+    0.1,   // The maximum playback rate change for pitch bend, should be between 0.01f and 0.3f (1% and 30%).
+    20,    // How long to maintain the pitch bend state in milliseconds. A value >= 1000 will hold until endContinuousPitchBend is called.
+    false, // True: if there was no jogTouchBegin, turn to JogMode_Parameter mode. False: if there was no jogTouchBegin, turn to JogMode_PitchBend mode.
+);
+
+// Call this when the jog touch ends.
+player.jogTouchEnd(
+    0,   // The decelerating rate for momentum. Set to 0 for automatic.
+    true // Beat-synced start after decelerating.
+);
+
+// Direct turntable handling. Call this when scratching starts. This is an advanced method, use it only if not using the jogT... methods.
+player.startScratch(
+    0,   // Enable slip mode for a specific amount of time for scratching, or 0 to not slip.
+    true // Stop playback or not.
+);
+
+// Scratch movement. This is an advanced method, use it only if not using the jogT... methods.
+player.scratch(
+    1.1, // The current speed (pitch).
+    0.5  // Smoothing factor. Should be between 0.05 (max. smoothing) and 1.0 (no smoothing).
+);
+
+// Ends scratching. This is an advanced method, use it only if not using the jogT... methods.
+player.endScratch(
+    true // Return to the previous playback state (direction, speed) or not.
+);
+
+// Indicates if the player is in scratching mode.
+let scratching = player.isScratching();
+
+// If jog wheel mode is JogMode_Parameter, returns with the current parameter typically in the range of -1 to 1, or less than -1000000.0 if there was no jog wheel movement. processStereo or processMulti updates this value, therefore it's recommended to read it after those calls were made, in the same thread.
+let p = player.getJogParameter();
+
+// Jog Wheel Mode, to be used with the jogT... methods.
+Superpowered.AdvancedAudioPlayer.Jogmode_Scratch;   // Jog wheel controls scratching.
+Superpowered.AdvancedAudioPlayer.Jogmode_PitchBend; // Jog wheel controls pitch bend.
+Superpowered.AdvancedAudioPlayer.Jogmode_Parameter; // Jog wheel changes a parameter.
+
+// Destructor (to free up memory).
+player.destruct();
 </code></pre>
 </main>
 

@@ -7,6 +7,8 @@ em++ --bind \
 ./main.cpp \
 ../superpowered.bc \
 -I../../SuperpoweredSDK/Superpowered \
+-DJSWASM="" \
+-flto \
 -s WASM=1 \
 -s MODULARIZE=1 \
 -s SINGLE_FILE=1 \

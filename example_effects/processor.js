@@ -1,6 +1,4 @@
-import SuperpoweredModule from '../superpowered.js'
-
-var Superpowered = null;
+import { SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
 
 function calculateFrequency(value, minFreq, maxFreq) {
     if (value > 0.97) return maxFreq;
@@ -8,15 +6,13 @@ function calculateFrequency(value, minFreq, maxFreq) {
     return Math.min(maxFreq, Math.pow(10.0, (value + ((0.4 - Math.abs(value - 0.4)) * 0.3)) * Math.log10(maxFreq - minFreq)) + minFreq);
 }
 
-class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
+class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     // runs after the constructor
     onReady() {
-        Superpowered = this.Superpowered;
-
-        this.reverb = Superpowered.new('Reverb', Superpowered.samplerate, Superpowered.samplerate);
+        this.reverb = new this.Superpowered.Reverb(this.samplerate, this.samplerate);
         this.reverb.enabled = true;
 
-        this.filter = Superpowered.new('Filter', Superpowered.FilterType.Resonant_Lowpass, Superpowered.samplerate);
+        this.filter = new this.Superpowered.Filter(this.Superpowered.Filter.Resonant_Lowpass, this.samplerate);
         this.filter.resonance = 0.2;
         this.filter.enabled = true;
     }
@@ -35,7 +31,6 @@ class MyProcessor extends SuperpoweredModule.AudioWorkletProcessor {
     processAudio(inputBuffer, outputBuffer, buffersize, parameters) {
         this.reverb.process(inputBuffer.pointer, inputBuffer.pointer, buffersize);
         this.filter.process(inputBuffer.pointer, outputBuffer.pointer, buffersize);
-        return true;
     }
 }
 
