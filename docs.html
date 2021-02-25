@@ -88,13 +88,18 @@ Superpowered.free(pointer);
 
 <pre><code class="language-js">
 // Total memory consumption in this example: 256 * 4 = 1024 bytes.
-let someBuffer = Superpowered.createFloatArray(256);
+let someBuffer = new Superpowered.Float32Buffer(256);
 
 someBuffer.pointer;        // Getting the linear memory index (pointer).
 someBuffer.length;         // Getting the length of the buffer.
-someBuffer.array[0] = 0.5; // Accessing the buffer as a Float32Array.
+someBuffer.array[0] = 0.5; // Accessing the buffer as a Float32Array (standard web TypedArray).
 
 someBuffer.free(); // Deallocate everything.
+
+// Other types are also available, because every web standard TypedArray specialization is supported:
+new Superpowered.Uint8Buffer(...)
+new Superpowered.Int32Buffer(...)
+...
 </code></pre>
 
 <h3>Web Audio</h3>
@@ -1514,6 +1519,9 @@ ts.sound = 1;
 // When the value if a multiply of 100 and is >= -1200 and <= 1200, changing the pitch shift needs only a few CPU clock cycles. Any change in pitchShiftCents involves significant momentary CPU load otherwise.
 ts.pitchShiftCents = 100;
 
+// Amount of formant correction, between 0 (none) and 1 (full). Default: 0.
+ts.formantCorrection = 0.5;
+
 // Returns with how many frames of input should be provided to the time stretcher to produce some output.
 // It's never blocking for real-time usage. Use it in the same thread with the other real-time methods of this class.
 // The result can be 0 if rate is 1 and pitch shift is 0, because in that case the time stretcher is fully "transparent" and any number of input frames will produce some output.
@@ -1548,7 +1556,7 @@ ts.destruct();
 
 <h2>Loading Audio</h2>
 
-<p>Due to nature of most JavaScript runtimes (such as no control over thread scheduling or no direct disk access), loading audio with Superpowered is a little bit different vs. native. <em>The entire audio file must be loaded into the WebAssembly Linear Memory memory</em> first, then the Superpowered Decoder can read and decode it.</p>
+<p>Due to the nature of most JavaScript runtimes (such as no control over thread scheduling or no direct disk access), loading audio with Superpowered is a little bit different vs. native. <em>The entire audio file must be loaded into the WebAssembly Linear Memory memory</em> first, then the Superpowered Decoder can read and decode it.</p>
 <p>You can either use the SuperpoweredTrackLoader.downloadAndDecode API for ease of use, or the Superpowered Decoder for advanced features.</p>
 
 <h3>SuperpoweredTrackLoader</h3>
