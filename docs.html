@@ -1171,7 +1171,7 @@ limiter.enable = true;
 
 limiter.ceilingDb = 0;     // Ceiling in decibels, limited between 0 and -40. Default: 0.
 limiter.thresholdDb = -16; // Threshold in decibels, limited between 0 and -40. Default: 0.
-limiter.releaseSec = 0.2;  // Release in seconds (not milliseconds!). Limited between 0.1 and 1.6. Default: 0.05 (50 ms).
+limiter.releaseSec = 0.2;  // Release in seconds (not milliseconds!). Limited between 0.001 and 1. Default: 0.05 (50 ms).
 
 // Returns the maximum gain reduction in decibels since the last getGainReductionDb() call.
 let gain_reduction_db = limiter.getGainReductionDb();
