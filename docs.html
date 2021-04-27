@@ -1519,6 +1519,9 @@ ts.sound = 1;
 // When the value if a multiply of 100 and is >= -1200 and <= 1200, changing the pitch shift needs only a few CPU clock cycles. Any change in pitchShiftCents involves significant momentary CPU load otherwise.
 ts.pitchShiftCents = 100;
 
+// Maintain precise timing when the time-stretcher turns on. Useful for all use-cases except when the audio is heavily manipulated with some resampler (scratching). Default: true.
+ts.preciseTurningOn = true;
+
 // Amount of formant correction, between 0 (none) and 1 (full). Default: 0.
 ts.formantCorrection = 0.5;
 

@@ -74,7 +74,7 @@ ul#toc li.current { background-color: #dddddd; }
 
 div#tocbox { display: none; }
 main { grid-column: 2; grid-row: 1; padding: 2rem; }
-aside { grid-column: 1; grid-row: 1; font-size: 0.9rem; border-right: 2px solid #dddddd; }
+aside { grid-column: 1; grid-row: 1; font-size: 0.9rem; border-right: 2px solid #dddddd; overflow: scroll; }
 aside:hover { border-right-color: #07a; }
 aside div { position: -webkit-sticky; position: sticky; top: 0; padding: 0; }
 aside div > a { display: block; font-size: 1rem; color: #000000; text-decoration: none; margin: 0 1rem 1rem 1rem; }
