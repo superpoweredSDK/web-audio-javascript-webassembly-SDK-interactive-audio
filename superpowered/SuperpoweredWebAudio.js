@@ -1,8 +1,11 @@
 import { SuperpoweredGlue } from './SuperpoweredGlueModule.js';
 import { SuperpoweredTrackLoader } from './SuperpoweredTrackLoaderModule.js';
 
+var AudioWorkletHasBrokenModuleImplementation = false;
+
 class SuperpoweredWebAudio {
-    constructor(minimumSamplerate, superpowered) {
+    constructor(minimumSamplerate, superpowered) { console.log(navigator.userAgent);
+        AudioWorkletHasBrokenModuleImplementation = (navigator.userAgent.indexOf('AppleWebKit') > -1) || (navigator.userAgent.indexOf('Firefox') > -1);
         this.Superpowered = superpowered;
         this.audioContext = null;
         let AudioContext = window.AudioContext || window.webkitAudioContext || false;
@@ -77,7 +80,7 @@ class SuperpoweredWebAudio {
     }
 
     createAudioNode(url, className, callback, onMessageFromAudioScope) {
-        if (typeof AudioWorkletNode === 'function') {
+        if (!AudioWorkletHasBrokenModuleImplementation && (typeof AudioWorkletNode === 'function')) {
             this.audioContext.audioWorklet.addModule(url).then(() => {
                 class SuperpoweredNode extends AudioWorkletNode {
                     constructor(glue, name) {
@@ -122,7 +125,7 @@ class SuperpoweredWebAudio {
     }
 }
 
-if (typeof AudioWorkletProcessor === 'function') {
+if (!AudioWorkletHasBrokenModuleImplementation && (typeof AudioWorkletProcessor === 'function')) {
     class SuperpoweredAudioWorkletProcessor extends AudioWorkletProcessor {
         constructor(options) {
             super();
