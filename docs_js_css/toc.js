@@ -69,19 +69,21 @@ class TOC {
         if (top == TOC.lastTop) return;
         TOC.lastTop = top;
 
-        let minDiff = 1000000000, current = null;
+        let minDiff = 1000000000, currentId = null;
         for (let section of TOC.sections) {
             let ot = section.offsetTop - 50;
             if (ot > top) continue;
             let diff = top - ot;
             if (diff < minDiff) {
                 minDiff = diff;
-                current = section;
+                currentId = section.id;
             }
         }
-        if (TOC.lastLi != current) {
+
+        let currentLi = currentId ? document.querySelector(`#li_${currentId}`) : null;
+        if (TOC.lastLi != currentLi) {
             if (TOC.lastLi != null) TOC.lastLi.classList.remove('current');
-            TOC.lastLi = document.getElementById('li_' + current.id);
+            TOC.lastLi = currentLi || null;
             if (TOC.lastLi != null) TOC.lastLi.classList.add('current');
         }
     }
