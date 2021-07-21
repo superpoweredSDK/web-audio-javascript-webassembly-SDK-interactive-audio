@@ -644,13 +644,8 @@ waveform.process(
 
 // Makes the result from the collected data. This method should NOT be used in a real-time audio thread, because it allocates memory. Has no return value.
 waveform.makeResult();
-
-waveform.peakWaveform; // 150 points/sec waveform data displaying the peak volume. Uint8Array. Each byte represents one "pixel". Available after calling makeResult().
+let w = waveform.getPeakWaveform(); // Superpowered.Uint8Buffer. 150 points/sec waveform data displaying the peak volume. Uint8Array. Each byte represents one "pixel". Available after calling makeResult().
 waveform.waveformSize; // The number of bytes in the peak, average, low, mid and high waveforms and notes.
-
-// To keep the array result after you destruct the waveform without an expensive memory copy, do this:
-let peakWaveform = waveform.peakWaveform;
-waveform.peakWaveform = null;
 
 // Destructor (to free up memory).
 waveform.destruct();
@@ -662,15 +657,24 @@ waveform.destruct();
 
 <pre><code class="language-js">
 // Constructor.
+let frequencies = new Superpowered.Float32Buffer(8), widths = new Superpowered.Float32Buffer(8);
+for (let n = 0; n < 8; n++) {
+    frequencies.array[n] = n * 1000;
+    widths.array[n] = 1;
+}
+
 let filterbank = new Superpowered.BandpassFilterbank(
     8,           // The number of bands. Must be a multiply of 8.
-    [ 100, 100, 100, 100, 100, 100, 100, 100 ], // Center frequencies of each band in Hz.
-    [ 1, 1, 1, 1, 1, 1, 1, 1 ],                 // Widths of each band in octave (1.0 is one octave, 1.0 / 12.0 is one halfnote).
+    frequencies.pointer, // Center frequencies of each band in Hz.
+    widths.pointer,                 // Widths of each band in octave (1.0 is one octave, 1.0 / 12.0 is one halfnote).
     44100,       // The initial sample rate in Hz.
     0            // numGroups: for advanced use.
                  // The filter bank can be set up with multiple frequency + width groups, then process() or processNoAdd() can be performed with one specific frequency + width group. For example, set up one group with wide frequency coverage for the 20-20000 Hz range and three additional groups for 20-200 Hz, 200-2000 Hz and 2000-20000 Hz. When processing with the wide group of 20-20000 Hz and the highest magnitude can be found at 1000 Hz, use the 200-2000 Hz group for the next process() or processNoAdd() call, so the filter bank will have a "focus" on a narrower range.
                  // If numGroups > 0, then the number of frequencies and widths should be numGroups * numBands. Example: for numBands = 8 and numGroups = 2, provide 8 + 8 frequencies and 8 + 8 widths.
 );
+
+Superpowered.free(frequencies);
+Superpowered.free(widths);
 
 // Do this when the sample rate changes.
 filterbank.samplerate = 48000;
@@ -692,7 +696,8 @@ filterbank.processNoAdd(
 );
 
 // The magnitude of the frequency bands. Will be updated after each process() or processNoAdd() call.
-let band0_magnitude = filterbank.bands[0];
+let bands = filterbank.getBands(); // Superpowered.Float32Buffer
+let band0_magnitude = bands.array[0];
 
 // Sets all values of bands to 0. Has no return value.
 filterbank.resetBands();
@@ -755,19 +760,15 @@ analyzer.beatgridStartMs;    // Where the beatgrid starts (first beat) in millis
 analyzer.keyIndex;           // The dominant key (chord) of the music. 0..11 are major keys from A to G#, 12..23 are minor keys from A to G#. Check the static constants in this header for musical, Camelot and Open Key notations.
 
 analyzer.waveformSize;       // The number of bytes in the peak, average, low, mid and high waveforms and notes.
-analyzer.peakWaveform;       // 150 points/sec waveform data displaying the peak volume. Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
-analyzer.averageWaveform;    // 150 points/sec waveform data displaying the average volume. Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
-analyzer.lowWaveform;        // 150 points/sec waveform data displaying the low frequencies (below 200 Hz). Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
-analyzer.midWaveform;        // 150 points/sec waveform data displaying the mid frequencies (200-1600 Hz). Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
-analyzer.highWaveform;       // 150 points/sec waveform data displaying the high frequencies (above 1600 Hz). Uint8Array. Each byte represents one "pixel". Available after calling makeResults().
-analyzer.notes;              // 150 points/sec data displaying the bass and mid keys. Upper 4 bits are the bass notes 0 to 11, lower 4 bits are the mid notes 0 to 11 (C, C#, D, D#, E, F, F#, G, G#, A, A#, B). The note value is 12 means "unknown note due low volume". Available after calling makeResults().
+let w = analyzer.getPeakWaveform();  // Superpowered.Uint8Buffer. 150 points/sec waveform data displaying the peak volume. Each byte represents one "pixel". Available after calling makeResults().
+let w = analyzer.getAverageWaveform();  // Superpowered.Uint8Buffer. 150 points/sec waveform data displaying the average volume. Each byte represents one "pixel". Available after calling makeResults().
+let w = analyzer.getLowWaveform();      // Superpowered.Uint8Buffer. 150 points/sec waveform data displaying the low frequencies (below 200 Hz). Each byte represents one "pixel". Available after calling makeResults().
+let w = analyzer.getMidWaveform();      // Superpowered.Uint8Buffer. 150 points/sec waveform data displaying the mid frequencies (200-1600 Hz). Each byte represents one "pixel". Available after calling makeResults().
+let w = analyzer.getHighWaveform();     // Superpowered.Uint8Buffer. 150 points/sec waveform data displaying the high frequencies (above 1600 Hz). Each byte represents one "pixel". Available after calling makeResults().
+let n = analyzer.getNotes();            // Superpowered.Uint8Buffer. 150 points/sec data displaying the bass and mid keys. Upper 4 bits are the bass notes 0 to 11, lower 4 bits are the mid notes 0 to 11 (C, C#, D, D#, E, F, F#, G, G#, A, A#, B). The note value is 12 means "unknown note due low volume". Available after calling makeResults().
 
-analyzer.overviewSize;       // The number bytes in overviewWaveform.
-analyzer.overviewWaveform;   // 1 point/sec waveform data displaying the average volume in decibels. Useful for displaying the overall structure of a track. Int8Array. Each byte has the value of -128 to 0, in decibels.
-
-// To keep an array result after you destruct the analyzer without an expensive memory copy, do this:
-let peakWaveform = analyzer.peakWaveform;
-analyzer.peakWaveform = null;
+analyzer.overviewSize;          // The number bytes in overviewWaveform.
+let w = analyzer.getOverviewWaveform(); // Superpowered.Uint8Buffer. 1 point/sec waveform data displaying the average volume in decibels. Useful for displaying the overall structure of a track. Int8Array. Each byte has the value of -128 to 0, in decibels.
 
 // Destructor (to free up memory).
 analyzer.destruct();
@@ -806,7 +807,7 @@ let eq = new Superpowered.ThreeBandEQ(
 eq.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-eq.enable = true;
+eq.enabled = true;
 
 // Low gain. Read-write. 1 is "flat", 2 is +6db. Kill is enabled under -40 db (0.01). Default: 1. Limits: 0 and 8.
 eq.low = 0.5;
@@ -840,7 +841,7 @@ let bc = new Superpowered.Bitcrusher(
 bc.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-bc.enable = true;
+bc.enabled = true;
 
 bc.frequency = 9000; // Frequency in Hz, from 20 Hz to the half of the samplerate.
 bc.bits = 8;         // Bit depth, from 1 to 16.
@@ -872,7 +873,7 @@ let echo = new Superpowered.Echo(
 echo.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-echo.enable = true;
+echo.enabled = true;
 
 echo.dry = 0.9;   // >= 0 and <= 1. Read-write.
 echo.wet = 0.5;   // >= 0 and <= 1. Read-write.
@@ -948,7 +949,7 @@ let flanger = new Superpowered.Flanger(
 flanger.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-flanger.enable = true;
+flanger.enabled = true;
 
 flanger.wet = 0.5;     // 0 to 1.
 flanger.depth = 0.5;   // 0 to 1 (0 is 0.3 ms, 1 is 8 ms).
@@ -988,7 +989,7 @@ let gate = new Superpowered.Gate(
 gate.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-gate.enable = true;
+gate.enabled = true;
 
 gate.wet = 0.5; // Limited to >= 0 and <= 1.
 gate.bpm = 128; // Limited to >= 40 and <= 250.
@@ -1022,7 +1023,7 @@ let roll = new Superpowered.Roll(
 roll.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-roll.enable = true;
+roll.enabled = true;
 
 roll.wet = 0.5; // Limited to >= 0 and <= 1.
 roll.bpm = 128; // Limited to >= 40 and <= 250.
@@ -1056,7 +1057,7 @@ let reverb = new Superpowered.Reverb(
 reverb.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-reverb.enable = true;
+reverb.enabled = true;
 
 reverb.dry = 1;        // Set dry independently from wet. Don't use the mix property in this case. >= 0 and <= 1.
 reverb.wet = 0.5;      // Set wet independently from dry. Don't use the mix property in this case. >= 0 and <= 1.
@@ -1094,7 +1095,7 @@ let whoosh = new Superpowered.Whoosh(
 whoosh.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-whoosh.enable = true;
+whoosh.enabled = true;
 
 whoosh.wet = 0.8;        // Limited to >= 0 and <= 1.
 whoosh.frequency = 1000; // Limited to >= 20 and <= 20000.
@@ -1126,7 +1127,7 @@ let compressor = new Superpowered.Compressor(
 compressor.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-compressor.enable = true;
+compressor.enabled = true;
 
 compressor.inputGainDb = 0;   // Input gain in decibels, limited between -24 and 24. Default: 0.
 compressor.outputGainDb = 3;  // Output gain in decibels, limited between -24 and 24. Default: 0.
@@ -1167,7 +1168,7 @@ let limiter = new Superpowered.Limiter(
 limiter.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-limiter.enable = true;
+limiter.enabled = true;
 
 limiter.ceilingDb = 0;     // Ceiling in decibels, limited between 0 and -40. Default: 0.
 limiter.thresholdDb = -16; // Threshold in decibels, limited between 0 and -40. Default: 0.
@@ -1231,7 +1232,7 @@ let filter = new Superpowered.Filter(
 filter.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-filter.enable = true;
+filter.enabled = true;
 
 filter.frequency = 1000; // Frequency in Hz. From 1 Hz to the half of the current sample rate.
 filter.decibel = 6;      // Decibel gain value for shelving and parametric filters. Limit: -96 to 24.
@@ -1296,7 +1297,7 @@ let gd = new Superpowered.GuitarDistortion(
 gd.samplerate = 48000;
 
 // Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
-gd.enable = true;
+gd.enabled = true;
 
 gd.gainDecibel = 0;        // Gain value in decibel. Limit: -96 to 24.
 gd.drive = 0.2;            // Drive percentage, from 0 to 1.
