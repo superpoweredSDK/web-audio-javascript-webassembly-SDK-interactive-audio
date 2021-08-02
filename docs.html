@@ -1224,7 +1224,7 @@ y[n] = (b0/a0)*x[n] + (b1/a0)*x[n-1] + (b2/a0)*x[n-2] - (a1/a0)*y[n-1] - (a2/a0)
 <pre><code class="language-js">
 // Constructor. Enabled is false by default.
 let filter = new Superpowered.Filter(
-    Superpowered.FilterType.Resonant_Lowpass, // The initial filter type.
+    Superpowered.Filter.Resonant_Lowpass, // The initial filter type.
     44100                                     // The initial sample rate in Hz.
 );
 
@@ -1240,17 +1240,17 @@ filter.resonance = 0.8;  // Resonance value for resonant filters. Resonance = Q 
 filter.octave = 1;       // Width in octave for bandlimited and parametric filters. Limit: 0.05 to 5.
 filter.slope = 0.5;      // Slope value for shelving filters. Limit: 0.001 to 1.
 
-filter.type = Superpowered.FilterType.Parametric; // Filter type. Changing the filter type often involves changing other parameters as well. Therefore in a real-time context change the parameters and the type in the same thread with the process() call.
+filter.type = Superpowered.Filter.Parametric; // Filter type. Changing the filter type often involves changing other parameters as well. Therefore in a real-time context change the parameters and the type in the same thread with the process() call.
 
 // Superpowered filter types and their effective parameters:
-Superpowered.FilterType.Resonant_Lowpass     // frequency, resonance
-Superpowered.FilterType.Resonant_Highpass    // frequency, resonance
-Superpowered.FilterType.Bandlimited_Bandpass // frequency, octave
-Superpowered.FilterType.Bandlimited_Notch    // frequency, octave
-Superpowered.FilterType.LowShelf             // frequency, slope, decibel
-Superpowered.FilterType.HighShelf            // frequency, slope, decibel
-Superpowered.FilterType.Parametric           // frequency, octave, decibel
-Superpowered.FilterType.CustomCoefficients
+Superpowered.Filter.Resonant_Lowpass     // frequency, resonance
+Superpowered.Filter.Resonant_Highpass    // frequency, resonance
+Superpowered.Filter.Bandlimited_Bandpass // frequency, octave
+Superpowered.Filter.Bandlimited_Notch    // frequency, octave
+Superpowered.Filter.LowShelf             // frequency, slope, decibel
+Superpowered.Filter.HighShelf            // frequency, slope, decibel
+Superpowered.Filter.Parametric           // frequency, octave, decibel
+Superpowered.Filter.CustomCoefficients
 
 // For advanced use. Set custom coefficients for the filter. Changes will be smoothly handled to prevent audio artifacts. Do not call this concurrently with process().
 filter.setCustomCoefficients(
@@ -1556,6 +1556,93 @@ ts.reset();
 
 // Destructor (to free up memory).
 ts.destruct();
+</code></pre>
+
+<p>Using the time stretcher is more complex than using other effects, because it changes time and therefore buffering as well. It's fully integrated into the AdvancedAudioPlayer class, which is recommended for simple use. But if the time-stretcher has to be used alone, the logic could look like this:</p>
+
+<pre><code class="language-js">
+while (ts.getOutputLengthFrames() < numberOfFramesNeeded) {
+    let timestretcherNeedsThisAmountOfFramesToProduceAudio = ts.getNumberOfInputFramesNeeded();
+    if (timestretcherNeedsThisAmountOfFramesToProduceAudio can not be acquired) break;
+    acquire timestretcherNeedsThisAmountOfFramesToProduceAudio into some Superpowered.Float32Buffer;
+    ts.addInput(some Superpowered.Float32Buffer pointer, number_of_frames_acquired);
+}
+
+if (ts.getOutputLengthFrames() >= numberOfFramesNeeded) {
+    // success, get output
+    ts.getOutput(output buffer pointer, numberOfFramesNeeded);
+} else {
+    // could not produce enough audio
+    // return with silence
+}
+</code></pre>
+
+<h2>Generating Audio</h2>
+
+<h3>Generator</h3>
+
+<p>Generator for various waveform shapes.</p>
+
+<pre><code class="language-js">
+// Constructor.
+let g = new Superpowered.Generator(
+     44100,                      // The initial sample rate in Hz.
+     Superpowered.Generator.Sine // The initial shape.
+);
+
+// Superpowered generator shapes
+Superpowered.Generator.Sine       // sine
+Superpowered.Generator.Triangle   // triangle
+Superpowered.Generator.Sawtooth   // sawtooth
+Superpowered.Generator.PWM        // pulse wave with adjustable width
+Superpowered.Generator.PinkNoise  // pink noise
+Superpowered.Generator.WhiteNoise // white noise
+Superpowered.Generator.SyncMaster // generates no sound, but sync data to use with generateSyncMaster
+
+g.frequency = 1000;   // Frequency of generator output in Hz. Minimum is > 0.0001, maximum is limited to sample rate / 2.
+g.pulsewidth = 0.3;   // Pulse Width for PWM shape. 0.5 results in a square wave. Limited between 0.0001 and 0.9999.
+g.samplerate = 48000; // Sample rate in Hz.
+g.shape = Superpowered.Generator.Triangle; // Shape.
+
+// Generates (outputs) audio.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with this function.
+g.generate(
+    output, // Pointer to floating point numbers. 32-bit MONO output.
+    512     // Number of samples to produce.
+);
+
+// Generates (outputs) audio for a frequency modulated (FM) oscillator.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with this function.
+g.generateFM(
+    output,   // Pointer to floating point numbers. 32-bit MONO output.
+    512,      // Number of samples to produce.
+    fmsource, // Pointer to floating point numbers. Source for FM modulation containing numberOfSamples samples, usually from a previous call to generate().
+    100       // Frequency modulation depth. 0 means no modulation, 1000 is a reasonable upper limit.
+);
+
+// Generates audio for an oscillator that also serves as synchronization source for another oscillator.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with this function.
+g.generateAndCreateSync(
+    output,   // Pointer to floating point numbers. 32-bit MONO output.
+    syncdata, // Pointer to a buffer to receive hard sync information for syncing oscillators. Should be numberOfSamples + 1 floats big minimum.
+    512,      // Number of samples to produce.
+);
+
+// Generates audio for an oscillator that is hard-synced to another oscillator.
+// It's never blocking for real-time usage. You can change all properties on any thread, concurrently with this function.
+g.generateSynchronized(
+    output,   // Pointer to floating point numbers. 32-bit MONO output.
+    syncdata, // Pointer to floating point numbers. Input sync data, previously produced by a call to generateAndCreateSync() with same numberOfSamples.
+    512       // Number of samples to produce.
+);
+
+// Start oscillator with given phase angle. In a synthesizer, this should be called whenever a voice starts.
+g.reset(
+    0.5 // Start phase of the oscillator between 0.0 (0 degree) and 1.0 (180 degrees).
+);
+
+// Destructor (to free up memory).
+g.destruct();
 </code></pre>
 
 <h2>Loading Audio</h2>
