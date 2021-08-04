@@ -1,5 +1,5 @@
 {
-    "name": "superpowered",
+    "name": "@descript/superpowered",
     "description": "Superpowered interactive audio features in JavaScript + WebAssembly.",
     "version": "2.2.0",
     "browser": "superpowered.js",
@@ -17,5 +17,7 @@
       "url": "https://github.com/superpoweredSDK/web-audio-javascript-webassembly-SDK-interactive-audio/issues",
       "email": "support@superpowered.zendesk.com"
     },
-    "homepage": "https://superpowered.com/js-wasm-overview"
+    "homepage": "https://superpowered.com/js-wasm-overview",
+    "files": ["superpowered/**/*"],
+    "types": "index.d.ts"
 }
