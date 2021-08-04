@@ -1,23 +1,30 @@
 {
-    "name": "@descript/superpowered",
-    "description": "Superpowered interactive audio features in JavaScript + WebAssembly.",
-    "version": "2.2.0-rc1",
-    "browser": "superpowered.js",
-    "scripts": {
-      "test": "echo \"No test specified.\" && exit 1"
-    },
-    "repository": {
-      "type": "git",
-      "url": "https://github.com/superpoweredSDK/web-audio-javascript-webassembly-SDK-interactive-audio.git"
-    },
-    "keywords": ["superpowered", "audio"],
-    "author": "Splice",
-    "license": "SEE LICENSE IN /license",
-    "bugs": {
-      "url": "https://github.com/superpoweredSDK/web-audio-javascript-webassembly-SDK-interactive-audio/issues",
-      "email": "support@superpowered.zendesk.com"
-    },
-    "homepage": "https://superpowered.com/js-wasm-overview",
-    "files": ["superpowered/**/*"],
-    "types": "index.d.ts"
+  "name": "@descript/superpowered",
+  "description": "Superpowered interactive audio features in JavaScript + WebAssembly.",
+  "version": "2.2.0-rc2",
+  "browser": "superpowered.js",
+  "scripts": {
+    "test": "echo \"No test specified.\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/superpoweredSDK/web-audio-javascript-webassembly-SDK-interactive-audio.git"
+  },
+  "keywords": [
+    "superpowered",
+    "audio"
+  ],
+  "author": "Splice",
+  "license": "SEE LICENSE IN /license",
+  "bugs": {
+    "url": "https://github.com/superpoweredSDK/web-audio-javascript-webassembly-SDK-interactive-audio/issues",
+    "email": "support@superpowered.zendesk.com"
+  },
+  "homepage": "https://superpowered.com/js-wasm-overview",
+  "files": [
+    "superpowered/**/*",
+    "index.js",
+    "index.d.ts"
+  ],
+  "types": "index.d.ts"
 }
