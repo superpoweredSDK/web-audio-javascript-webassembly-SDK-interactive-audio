@@ -1,3 +1,18 @@
+declare class SuperpoweredProcessor {
+    constructor(samplerate: number);
+    process: (inMemoryPointer: any, outMemoryPointer: any, bufferSize: number) => void;
+}
+
+declare class Bitcrusher extends SuperpoweredProcessor {
+    enabled: boolean;
+    frequency: number;
+    bits: number;
+}
+
+declare interface ProcessorConstructable<T> {
+    new(samplerate: number): T;
+}
+
 export declare class Superpowered {
     Initialize(options: {
         licenseKey: string;
@@ -13,5 +28,8 @@ export declare class Superpowered {
 
     wasmCode: any;
     __maxChannels__: number;
+
+    // Flesh this out with proper types as we go
+    Bitcrusher: ProcessorConstructable<Bitcrusher>;
 }
 
