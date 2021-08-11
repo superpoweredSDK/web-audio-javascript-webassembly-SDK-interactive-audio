@@ -29,7 +29,12 @@ export declare class Superpowered {
     wasmCode: any;
     __maxChannels__: number;
 
+    createFloatArray(length: number): SuperpoweredFloat32Buffer;
+
     // Flesh this out with proper types as we go
     Bitcrusher: ProcessorConstructable<Bitcrusher>;
 }
 
+export declare interface SuperpoweredFloat32Buffer {
+    array: Float32Array;
+}
