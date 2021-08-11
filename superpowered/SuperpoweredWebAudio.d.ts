@@ -1,7 +1,7 @@
-import { Superpowered } from "./Superpowered";
+import { SuperpoweredGlue } from "./SuperpoweredGlueModule";
 
 export declare class AudioWorkletProcessor {
-    Superpowered: Superpowered;
+    Superpowered: SuperpoweredGlue;
 }
 
 export declare class SuperpoweredWebAudio {
