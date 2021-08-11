@@ -1,6 +1,10 @@
 declare class SuperpoweredProcessor {
     constructor(samplerate: number);
-    process: (inMemoryPointer: any, outMemoryPointer: any, bufferSize: number) => void;
+    process: (
+        inMemoryPointer: SuperpoweredMemoryPointer,
+        outMemoryPointer: SuperpoweredMemoryPointer,
+        bufferSize: number,
+    ) => void;
 }
 
 declare class Bitcrusher extends SuperpoweredProcessor {
@@ -35,6 +39,9 @@ export declare class Superpowered {
     Bitcrusher: ProcessorConstructable<Bitcrusher>;
 }
 
+export declare interface SuperpoweredMemoryPointer {}
+
 export declare interface SuperpoweredFloat32Buffer {
     array: Float32Array;
+    pointer: SuperpoweredMemoryPointer;
 }
