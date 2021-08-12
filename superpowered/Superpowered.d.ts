@@ -34,6 +34,8 @@ export declare class Superpowered {
     __maxChannels__: number;
 
     createFloatArray(length: number): SuperpoweredFloat32Buffer;
+    bufferToWASM(output: SuperpoweredFloat32Buffer, input: AudioBuffer): void;
+    bufferToJS(input: SuperpoweredFloat32Buffer, output: AudioBuffer): void;
 
     // Flesh this out with proper types as we go
     Bitcrusher: ProcessorConstructable<Bitcrusher>;

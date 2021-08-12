@@ -2,7 +2,11 @@ import {Superpowered, SuperpoweredFloat32Buffer} from "./Superpowered";
 
 export declare namespace SuperpoweredWebAudio {
     export class AudioWorkletProcessor {
-        constructor(options?: AudioWorkletNodeOptions);
+        constructor(
+            superpowered: Superpowered,
+            onMessageFromAudioScope: (message: any) => void,
+            samplerate: number,
+        );
 
         // Superpowered-specific
         Superpowered: Superpowered;
