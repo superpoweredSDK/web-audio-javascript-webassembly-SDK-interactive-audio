@@ -10,6 +10,7 @@ export default {
       targets: [
         { src: 'index.d.ts', dest: 'dist'},
         { src: 'superpowered/**/*.d.ts', dest: 'dist/superpowered'},
+        { src: 'superpowered/**/*.wasm', dest: 'dist/superpowered'},
       ],
     }),
   ],
