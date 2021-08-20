@@ -489,6 +489,20 @@ class SuperpoweredGlue {
         }
     }
 
+    // srubin[06/14/2021]: added to support mono inputs
+    monoBufferToWASM(buffer, input) {
+        let inBuffer = null;
+        if (typeof input.getChannelData === 'function') {
+            inBuffer = input.getChannelData(0);
+        } else {
+            inBuffer = input[0][0];
+        }
+        for (let n = 0, i = 0; n < buffer.array.length; n++, i++) {
+            buffer.array[n++] = inBuffer[i];
+            buffer.array[n] = inBuffer[i];
+        }
+    }
+
     bufferToJS(buffer, output) {
         let outBufferL = null;
         let outBufferR = null;
@@ -504,6 +518,20 @@ class SuperpoweredGlue {
             outBufferR[i] = buffer.array[n];
         }
     }
+
+    // srubin[06/14/2021]: added to support mono outputs
+    monoBufferToJs(buffer, output) {
+        let outBuffer = null;
+        if (typeof output.getChannelData === 'function') {
+            outBuffer = output.getChannelData(0);
+        } else {
+            outBuffer = output[0][0];
+        }
+        for (let n = 0, i = 0; n < buffer.array.length; n += 2, i++) {
+            outBuffer[i] = buffer.array[n];
+        }
+    }
+
 
     arrayBufferToWASM(arrayBuffer, offset = 0) {
         let pointer = this.malloc(arrayBuffer.byteLength + offset);
@@ -524,8 +552,8 @@ class SuperpoweredGlue {
     }
 }
 
-if (typeof exports === 'object' && typeof module === 'object') module.exports = SuperpoweredGlue;
-else if (typeof define === 'function' && define['amd']) define([], function() { return SuperpoweredGlue; });
-else if (typeof exports === 'object') exports["SuperpoweredGlue"] = SuperpoweredGlue;
+// if (typeof exports === 'object' && typeof module === 'object') module.exports = SuperpoweredGlue;
+// else if (typeof define === 'function' && define['amd']) define([], function() { return SuperpoweredGlue; });
+// else if (typeof exports === 'object') exports["SuperpoweredGlue"] = SuperpoweredGlue;
 
 export { SuperpoweredGlue };

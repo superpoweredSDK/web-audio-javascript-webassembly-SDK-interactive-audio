@@ -37,8 +37,8 @@ class SuperpoweredTrackLoader {
     }
 }
 
-if (typeof exports === 'object' && typeof module === 'object') module.exports = { SuperpoweredTrackLoader };
-else if (typeof define === 'function' && define['amd']) define([], function() { return { SuperpoweredTrackLoader }; });
-else if (typeof exports === 'object') exports["SuperpoweredTrackLoader"] = { SuperpoweredTrackLoader };
+// if (typeof exports === 'object' && typeof module === 'object') module.exports = { SuperpoweredTrackLoader };
+// else if (typeof define === 'function' && define['amd']) define([], function() { return { SuperpoweredTrackLoader }; });
+// else if (typeof exports === 'object') exports["SuperpoweredTrackLoader"] = { SuperpoweredTrackLoader };
 
 export { SuperpoweredTrackLoader };

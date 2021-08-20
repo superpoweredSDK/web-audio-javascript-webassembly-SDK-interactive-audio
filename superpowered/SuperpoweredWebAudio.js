@@ -151,9 +151,24 @@ if (!AudioWorkletHasBrokenModuleImplementation && (typeof AudioWorkletProcessor 
         processAudio(buffer, parameters) {}
         process(inputs, outputs, parameters) {
             if (this.ok) {
-                if (inputs[0].length > 1) this.Superpowered.bufferToWASM(this.inputBuffer, inputs);
-                this.processAudio(this.inputBuffer, this.outputBuffer, this.inputBuffer.array.length / 2, parameters);
-                if (outputs[0].length > 1) this.Superpowered.bufferToJS(this.outputBuffer, outputs);
+                if (inputs[0].length > 1) {
+                    this.Superpowered.bufferToWASM(this.inputBuffer, inputs);
+                } else if (inputs[0].length === 1) {
+                    // srubin[06/14/2021]: added this to support mono inputs
+                    this.Superpowered.monoBufferToWASM(this.inputBuffer, inputs);
+                }
+                this.processAudio(
+                  this.inputBuffer,
+                  this.outputBuffer,
+                  this.inputBuffer.array.length / 2,
+                  parameters,
+                );
+                if (outputs[0].length > 1) {
+                    this.Superpowered.bufferToJS(this.outputBuffer, outputs);
+                } else if (outputs[0].length === 1) {
+                    // srubin[06/14/2021]: added this to support mono outputs
+                    this.Superpowered.monoBufferToJs(this.outputBuffer, outputs);
+                }
             }
             return true;
         }
@@ -168,7 +183,7 @@ if (!AudioWorkletHasBrokenModuleImplementation && (typeof AudioWorkletProcessor 
             this.onMessageFromAudioScope = oma;
             this.onReady();
         }
-        onMessageFromAudioScope = null;
+        // onMessageFromAudioScope = null;
         onReady() {}
         onMessageFromMainScope(message) {}
         sendMessageToMainScope(message) { if (!this.loader.onmessage({ data: message })) this.onMessageFromAudioScope(message); }
@@ -178,8 +193,8 @@ if (!AudioWorkletHasBrokenModuleImplementation && (typeof AudioWorkletProcessor 
     SuperpoweredWebAudio.AudioWorkletProcessor = SuperpoweredAudioWorkletProcessor;
 }
 
-if (typeof exports === 'object' && typeof module === 'object') module.exports = { SuperpoweredGlue, SuperpoweredWebAudio, SuperpoweredTrackLoader };
-else if (typeof define === 'function' && define['amd']) define([], function() { return { SuperpoweredGlue, SuperpoweredWebAudio, SuperpoweredTrackLoader }; });
-else if (typeof exports === 'object') exports["SuperpoweredModule"] = { SuperpoweredGlue, SuperpoweredWebAudio, SuperpoweredTrackLoader };
+// if (typeof exports === 'object' && typeof module === 'object') module.exports = { SuperpoweredGlue, SuperpoweredWebAudio, SuperpoweredTrackLoader };
+// else if (typeof define === 'function' && define['amd']) define([], function() { return { SuperpoweredGlue, SuperpoweredWebAudio, SuperpoweredTrackLoader }; });
+// else if (typeof exports === 'object') exports["SuperpoweredModule"] = { SuperpoweredGlue, SuperpoweredWebAudio, SuperpoweredTrackLoader };
 
 export { SuperpoweredGlue, SuperpoweredWebAudio, SuperpoweredTrackLoader };
