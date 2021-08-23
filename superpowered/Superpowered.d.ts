@@ -105,6 +105,7 @@ export declare class Superpowered {
     // Flesh this out with proper types as we go
     ThreeBandEQ: ProcessorConstructable<ThreeBandEQ>;
     Bitcrusher: ProcessorConstructable<Bitcrusher>;
+    Echo: ProcessorConstructable<Echo>;
 }
 
 export declare interface SuperpoweredMemoryPointer {}
