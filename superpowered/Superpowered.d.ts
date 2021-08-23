@@ -64,15 +64,15 @@ declare class Echo extends SuperpoweredProcessor {
     samplerate: number;
     /** Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation. */
     enabled: boolean;
-    /** >= 0 and <= 1. Read-write. */
+    /** 0 <= and <= 1. Read-write. */
     dry: number;
-    /** >= 0 and <= 1. Read-write. */
+    /** 0 <= and <= 1. Read-write. */
     wet: number;
-    /** >= 40 and <= 250. Read-write. */
+    /** 40 <= and <= 250. Read-write. */
     bpm: number;
     /** Delay in beats, >= 0.03125 and <= 2.0. Read-write. */
     beats: number;
-    /** >= 0 and <= 0.99. Read-write. */
+    /** 0 <= and <= 0.99. Read-write. */
     decay: number;
     /** Sets dry and wet simultaneously with a good balance between them. Wet always equals to mix, but dry changes with a curve. */
     setMix: (mix: number) => void;
