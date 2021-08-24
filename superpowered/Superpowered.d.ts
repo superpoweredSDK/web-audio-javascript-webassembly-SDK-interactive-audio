@@ -38,7 +38,7 @@ declare class ThreeBandEQ extends SuperpoweredProcessor {
     mid: number;
     /** // High gain. See low for details. */
     high: number;
-};
+}
 
 /**
  * Bit crusher with adjustable frequency and bit depth. Simulates an old-school digital sound card. It doesn't allocate any internal buffers and needs just a few bytes of memory.
