@@ -36,7 +36,7 @@ declare class ThreeBandEQ extends SuperpoweredProcessor {
     low: number;
     /** Mid gain. See low for details. */
     mid: number;
-    /** // High gain. See low for details. */
+    /** High gain. See low for details. */
     high: number;
 }
 
@@ -51,7 +51,7 @@ declare class Bitcrusher extends SuperpoweredProcessor {
     enabled: boolean;
     /** Frequency in Hz, from 20 Hz to the half of the samplerate. */
     frequency: number;
-    /** // Bit depth, from 1 to 16. */
+    /** Bit depth, from 1 to 16. */
     bits: number;
 }
 
