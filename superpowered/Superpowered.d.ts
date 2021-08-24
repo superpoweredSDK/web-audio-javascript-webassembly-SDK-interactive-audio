@@ -282,8 +282,22 @@ declare class Compressor extends SuperpoweredProcessor {
     samplerate: number;
     /** Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation. */
     enabled: boolean;
-
-    // @TODO: Parameters
+    /**  Input gain in decibels, limited between -24 and 24. Default: 0. */
+    inputGainDb: number;
+    /** Output gain in decibels, limited between -24 and 24. Default: 0 */
+    outputGainDb: number;
+    /** Dry/wet ratio, limited between 0 (completely dry) and 1 (completely wet). Default: 1. */
+    wet: number;
+    /** Attack in seconds (not milliseconds!). Limited between 0.0001 and 1. Default: 0.003 (3 ms). */
+    attackSec: number;
+    /** Release in seconds (not milliseconds!). Limited between 0.1 and 4. Default: 0.3 (300 ms). */
+    releaseSec: number;
+    /** Ratio, rounded to 1.5, 2.0, 3.0, 4.0, 5.0 or 10. Default: 3. */
+    ratio: number;
+    /** Threshold in decibels, limited between 0 and -40. Default: 0. */
+    thresholdDb: number;
+    /** Key highpass filter frequency, limited between 1 and 10000. Default: 1. */
+    hpCutOffHz: number;
 
     /**
      * Returns the maximum gain reduction in decibels since the last getGainReductionDb() call.
@@ -300,8 +314,12 @@ declare class Limiter extends SuperpoweredProcessor {
     samplerate: number;
     /** Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation. */
     enabled: boolean;
-
-    // @TODO: Parameters
+    /** Ceiling in decibels, limited between 0 and -40. Default: 0. */
+    ceilingDb: number;
+    /** Threshold in decibels, limited between 0 and -40. Default: 0. */
+    thresholdDb: number;
+    /** Release in seconds (not milliseconds!). Limited between 0.001 and 1. Default: 0.05 (50 ms). */
+    releaseSec: number;
 
     /**
      * Returns the maximum gain reduction in decibels since the last getGainReductionDb() call.
@@ -319,7 +337,10 @@ declare class Clipper {
      */
     constructor();
 
-    // @TODO: Parameters
+    /** Audio below this will be unchanged, above this will be attenuated. Limited between -100 and 0. */
+    thresholdDb: number;
+    /** Audio will reach 1.0f at this point. Limited between -48 and 48. */
+    releaseSec: number;
 
     /**
      * Processes the audio. Has no return value.
@@ -348,8 +369,34 @@ declare class GuitarDistortion extends SuperpoweredProcessor {
     samplerate: number;
     /** Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation. */
     enabled: boolean;
-
-    // @TODO: Parameters
+    /** Gain value in decibel. Limit: -96 to 24. */
+    gainDecibel: number;
+    /** Drive percentage, from 0 to 1. */
+    drive: number
+    /** High-pass filter frequency in Hz. From 1 Hz to 250 Hz. */
+    bassFrequency: number;
+    /** Low-pass filter frequency in Hz. From 6000 Hz to the half of the current sample rate. */
+    trebleFrequency: number;
+    /** EQ 80 Hz decibel gain. Limit: -96 to 24. */
+    eq80HzDecibel: number;
+    /** EQ 240 Hz decibel gain. Limit: -96 to 24. */
+    eq240HzDecibel: number;
+    /** EQ 750 Hz decibel gain. Limit: -96 to 24. */
+    eq750HzDecibel: number;
+    /** EQ 2200 Hz decibel gain. Limit: -96 to 24. */
+    eq2200HzDecibel: number;
+    /** EQ 6600 Hz decibel gain. Limit: -96 to 24. */
+    eq6600HzDecibel: number;
+    /** Enables the first distortion sound, that is similar to Boss DS-1. */
+    distortion0: boolean;
+    /** Enables the second distortion sound, that is similar to Tyrian. */
+    distortion1: boolean;
+    /** Enables Marshall cabinet simulation. */
+    marshall: boolean;
+    /** Enables ADA cabinet simulation. Adds a lot of bass and treble. */
+    ada: boolean;
+    /** Enables V-Twin preamp simulation. Recommended for blues/jazz. */
+    vtwin: boolean;
 }
 
 /**
@@ -358,22 +405,73 @@ declare class GuitarDistortion extends SuperpoweredProcessor {
  * The spatializer class also has one Global Spatializer Reverb instance to simulate "room sound". It collects audio from all Spatializer instances and puts a reverb on the signal.
  * https://superpowered.com/js-wasm-sdk/docs.html#section_4_15
  */
-declare class Spatializer extends SuperpoweredProcessor {
+declare class Spatializer {
+    /**
+     * Constructor. Enabled is false by default.
+     */
+     constructor(samplerate: number);
+
     /** Set this when the sample rate changes. */
     samplerate: number;
+    /** Input volume (gain). */
+    inputVolume: number;
+    /** From 0 to 360 degrees. */
+    azimuth: number;
+    /** -90 to 90 degrees. */
+    elevation: number;
+    /** The ratio of how much audio the Global Spatializer Reverb can collect from this instance (between 0 and 1). */
+    reverbmix: number;
+    /** Occlusion factor (between 0 and 1); */
+    occlusion: number;
+    /** Alternative sound option. True on, false off. */
+    sound2: boolean;
+    
+    /** Global Spatializer Reverb stereo width. >= 0 and <= 1. */
+    static reverbWidth: number;
+    /** Global Spatializer Reverb high frequency damping. >= 0 and <= 1. */
+    static reverbDamp: number;
+    /** Global Spatializer Reverb room size. >= 0 and <= 1. */
+    static reverbRoomSize: number;
+    /** Global Spatializer Reverb pre-delay in milliseconds. 0 to 500. */
+    static reverbPredelayMs: number;
+    /** Global Spatializer Reverb frequency of the low cut in Hz (-12 db point). Default: 0 (no low frequency cut). */
+    static reverbLowCutHz: number;
 
-    // @TODO: Parameters
-
-    // @TODO: Custom process() calls
+    /**
+     * Processes the audio.
+     * It's never blocking for real-time usage. You can change all properties on any thread, concurrently with process().
+     * If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+     */
+    process: (
+        /** Pointer to floating point numbers. 32-bit left channel or interleaved stereo input. */
+        inputLeft: SuperpoweredMemoryPointer,
+        /** Pointer to floating point numbers. 32-bit right channel input. Can be null, inputLeft will be used in this case as interleaved stereo input. */
+        inputRight: SuperpoweredMemoryPointer,
+        /** Pointer to floating point numbers. 32-bit left channel or interleaved stereo output. */
+        outputLeft: SuperpoweredMemoryPointer,
+        /** Pointer to floating point numbers. 32-bit right channel output. Can be null, outputLeft will be used in this case as interleaved stereo output. */
+        outputRight: SuperpoweredMemoryPointer,
+        /** Number of frames to process. Valid between 64-8192. */
+        bufferSize: number,
+        /** If true, audio will be added to whatever content is in outputLeft or outputRight. */   
+        mixInPlace: boolean       
+    ) => boolean;
+    
+    /**
+     * Outputs the Global Spatializer Reverb. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation. Should be called after every Spatializer's process() method.
+     * It's never blocking for real-time usage. You can change all properties of the globalReverb on any thread, concurrently with process().
+     * If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+     */
+    static reverbProcess: (
+        /** Pointer to floating point numbers. 32-bit interleaved stereo output. */
+        output: SuperpoweredMemoryPointer,
+        /** Number of framesto process. Should not be higher than 8192. */
+        bufferSize: number
+    ) => boolean;
 }
 
-
-declare interface ProcessorConstructableWithSamplerate<T> {
-    new(samplerate: number): T;
-}
-
-declare interface ProcessorConstructableWithMaxSamplerate<T> {
-    new(samplerate: number, maximumSamplerate: number): T;
+declare interface ProcessorConstructabl0<T> {
+    new(): T;
 }
 
 declare interface ProcessorConstructabl1<T> {
@@ -420,6 +518,7 @@ export declare class Superpowered {
     Whoosh: ProcessorConstructabl1<Whoosh>;
     Compressor: ProcessorConstructabl1<Compressor>;
     Limiter: ProcessorConstructabl1<Limiter>;
+    Clipper: ProcessorConstructabl0<Clipper>;
     GuitarDistortion: ProcessorConstructabl1<GuitarDistortion>;
     Spatializer: ProcessorConstructabl1<Spatializer>;
 }
