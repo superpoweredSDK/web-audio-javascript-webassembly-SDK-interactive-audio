@@ -376,6 +376,18 @@ declare interface ProcessorConstructableWithMaxSamplerate<T> {
     new(samplerate: number, maximumSamplerate: number): T;
 }
 
+declare interface ProcessorConstructabl1<T> {
+    new(samplerate: number): T;
+}
+
+declare interface ProcessorConstructabl2<T> {
+    new(samplerate: number, maximumSamplerate: number): T;
+}
+
+declare interface ProcessorConstructabl4<T> {
+    new(maximumDelayMs: number, maximumSamplerate: number, maximumFrames: number, samplerate: number): T;
+}
+
 export declare class Superpowered {
     Initialize(options: {
         licenseKey: string;
@@ -397,18 +409,19 @@ export declare class Superpowered {
     bufferToJS(input: SuperpoweredFloat32Buffer, output: AudioBuffer): void;
 
     // Flesh this out with proper types as we go
-    ThreeBandEQ: ProcessorConstructableWithSamplerate<ThreeBandEQ>;
-    Bitcrusher: ProcessorConstructableWithSamplerate<Bitcrusher>;
-    Echo: ProcessorConstructableWithSamplerate<Echo>;
-    Delay: Delay;   // has custom constructor and process()
-    Flanger: ProcessorConstructableWithSamplerate<Flanger>;
-    Gate: ProcessorConstructableWithSamplerate<Gate>;
-    Roll: ProcessorConstructableWithMaxSamplerate<Roll>;
-    Reverb: ProcessorConstructableWithMaxSamplerate<Reverb>;
-    Whoosh: ProcessorConstructableWithSamplerate<Whoosh>;
-    Compressor: ProcessorConstructableWithSamplerate<Compressor>;
-    Limiter: ProcessorConstructableWithSamplerate<Limiter>;
-    GuitarDistortion: ProcessorConstructableWithSamplerate<GuitarDistortion>;
+    ThreeBandEQ: ProcessorConstructabl1<ThreeBandEQ>;
+    Bitcrusher: ProcessorConstructabl1<Bitcrusher>;
+    Echo: ProcessorConstructabl1<Echo>;
+    Delay: ProcessorConstructabl4<Delay>;   // has custom constructor and process()
+    Flanger: ProcessorConstructabl1<Flanger>;
+    Gate: ProcessorConstructabl1<Gate>;
+    Roll: ProcessorConstructabl2<Roll>;
+    Reverb: ProcessorConstructabl2<Reverb>;
+    Whoosh: ProcessorConstructabl1<Whoosh>;
+    Compressor: ProcessorConstructabl1<Compressor>;
+    Limiter: ProcessorConstructabl1<Limiter>;
+    GuitarDistortion: ProcessorConstructabl1<GuitarDistortion>;
+    Spatializer: ProcessorConstructabl1<Spatializer>;
 }
 
 export declare interface SuperpoweredMemoryPointer {}
