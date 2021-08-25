@@ -340,7 +340,7 @@ declare class Clipper {
     /** Audio below this will be unchanged, above this will be attenuated. Limited between -100 and 0. */
     thresholdDb: number;
     /** Audio will reach 1.0f at this point. Limited between -48 and 48. */
-    releaseSec: number;
+    maximumDb: number;
 
     /**
      * Processes the audio. Has no return value.
