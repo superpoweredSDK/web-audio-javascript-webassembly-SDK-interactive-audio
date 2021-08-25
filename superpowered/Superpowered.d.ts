@@ -1,4 +1,7 @@
-
+/**
+ * Base Superpowered Processor class for most common cases
+ * (some processors may have different constructor or process arguments)
+ */
 declare class SuperpoweredProcessor {
     /**
      * Constructor. Enabled is false by default.
@@ -470,19 +473,31 @@ declare class Spatializer {
     ) => boolean;
 }
 
-declare interface ProcessorConstructabl0<T> {
+/**
+ * Constructor interface for effect with 0 arguments
+ */
+declare interface ProcessorConstructable0<T> {
     new(): T;
 }
 
-declare interface ProcessorConstructabl1<T> {
+/**
+ * Constructor interface for effect with 1 argument
+ */
+declare interface ProcessorConstructable1<T> {
     new(samplerate: number): T;
 }
 
-declare interface ProcessorConstructabl2<T> {
+/**
+ * Constructor interface for effect with 2 arguments
+ */
+declare interface ProcessorConstructable2<T> {
     new(samplerate: number, maximumSamplerate: number): T;
 }
 
-declare interface ProcessorConstructabl4<T> {
+/**
+ * Constructor interface for effect with 4 arguments
+ */
+declare interface ProcessorConstructable4<T> {
     new(maximumDelayMs: number, maximumSamplerate: number, maximumFrames: number, samplerate: number): T;
 }
 
@@ -506,21 +521,20 @@ export declare class Superpowered {
     bufferToWASM(output: SuperpoweredFloat32Buffer, input: AudioBuffer): void;
     bufferToJS(input: SuperpoweredFloat32Buffer, output: AudioBuffer): void;
 
-    // Flesh this out with proper types as we go
-    ThreeBandEQ: ProcessorConstructabl1<ThreeBandEQ>;
-    Bitcrusher: ProcessorConstructabl1<Bitcrusher>;
-    Echo: ProcessorConstructabl1<Echo>;
-    Delay: ProcessorConstructabl4<Delay>;   // has custom constructor and process()
-    Flanger: ProcessorConstructabl1<Flanger>;
-    Gate: ProcessorConstructabl1<Gate>;
-    Roll: ProcessorConstructabl2<Roll>;
-    Reverb: ProcessorConstructabl2<Reverb>;
-    Whoosh: ProcessorConstructabl1<Whoosh>;
-    Compressor: ProcessorConstructabl1<Compressor>;
-    Limiter: ProcessorConstructabl1<Limiter>;
-    Clipper: ProcessorConstructabl0<Clipper>;
-    GuitarDistortion: ProcessorConstructabl1<GuitarDistortion>;
-    Spatializer: ProcessorConstructabl1<Spatializer>;
+    ThreeBandEQ: ProcessorConstructable1<ThreeBandEQ>;
+    Bitcrusher: ProcessorConstructable1<Bitcrusher>;
+    Echo: ProcessorConstructable1<Echo>;
+    Delay: ProcessorConstructable4<Delay>;
+    Flanger: ProcessorConstructable1<Flanger>;
+    Gate: ProcessorConstructable1<Gate>;
+    Roll: ProcessorConstructable2<Roll>;
+    Reverb: ProcessorConstructable2<Reverb>;
+    Whoosh: ProcessorConstructable1<Whoosh>;
+    Compressor: ProcessorConstructable1<Compressor>;
+    Limiter: ProcessorConstructable1<Limiter>;
+    Clipper: ProcessorConstructable0<Clipper>;
+    GuitarDistortion: ProcessorConstructable1<GuitarDistortion>;
+    Spatializer: ProcessorConstructable1<Spatializer>;
 }
 
 export declare interface SuperpoweredMemoryPointer {}
