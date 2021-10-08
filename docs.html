@@ -180,6 +180,9 @@ let audioNode = await webaudioManager.createAudioNodeAsync(
         // message is a standard JavaScript object.
     }
 );
+
+// Will return false from the process() method of the AudioWorkletNode and run onDestruct to clean up WebAssembly and more.
+audioNode.destruct();
 </code></pre>
 
 <h3>AudioWorkletProcessor</h3>
@@ -191,6 +194,10 @@ let audioNode = await webaudioManager.createAudioNodeAsync(
 class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     onReady() {
         // Runs after the constructor. This is "your" constructor basically.
+    }
+    onDestruct() {
+        // Runs before the node is destroyed.
+        // Clean up memory and objects here (such as free allocated linear memory or destruct Superpowered objects).
     }
     onMessageFromMainScope(message) {
         // Runs when a message (data) is received from the main scope (main thread).
@@ -1145,9 +1152,60 @@ let gain_reduction_db = compressor.getGainReductionDb();
 // It's never blocking for real-time usage. You can change all properties and call getGainReductionDb() on any thread, concurrently with process().
 // If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
 let changedOutput = compressor.process(
-    input   // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
     output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
     128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Destructor (to free up memory).
+compressor.destruct();
+</code></pre>
+
+<h3>Compressor2</h3>
+
+<p>Compressor with 0 latency, adjustable knee and optional sidechain input. It doesn't allocate any internal buffers and needs less than 1 kb of memory.</p>
+
+<pre><code class="language-js">
+// Constructor. Enabled is false by default.
+let compressor = new Superpowered.Compressor2(
+    44100 // The initial sample rate in Hz.
+);
+
+// Do this when the sample rate changes.
+compressor.samplerate = 48000;
+
+// Turns the effect on/off. False by default. The actual switch will happen on the next process() call for smooth, audio-artifact free operation.
+compressor.enabled = true;
+
+compressor.attackSec = 0.01;  // Attack in seconds (not milliseconds!). Limited between 0.00001 and 10. Default: 0.05 (50 ms).
+compressor.holdSec = 0;       // Hold segment before release starts, useful to limit unwanted noise with fast rates. 0 to 1 second (not millisecond). Default: 0.005 (5 ms).
+compressor.releaseSec = 0.2;  // Release in seconds (not milliseconds!). Limited between 0.00001 and 10. Default: 0.05 (50 ms).
+compressor.ratio = 5;         // Ratio, 1 to 1000. Default: 4.
+compressor.thresholdDb = -16; // Threshold in decibels, limited between 0 and -60. Default: -6.
+compressor.softKneeDb = 3     // Width of soft knee in decibels, 0 to 12. Default: 6.
+compressor.outputGainDb = 3;  // Output gain in decibels, limited between -24 and 24. Default: 0.
+compressor.automaticGain = false; // If true, gain is set relative to compressor output at 0dB. Useful in digital environments. Default: true.
+
+// Returns the maximum gain reduction in decibels since the last getGainReductionDb() call.
+let gain_reduction_db = compressor.getGainReductionDb();
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties and call getGainReductionDb() on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = compressor.process(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128     // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
+);
+
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties and call getGainReductionDb() on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = compressor.processWithSidechain(
+    input,     // Pointer to floating point numbers. 32-bit interleaved stereo input.
+    sidechain, // Pointer to floating point numbers. 32-bit interleaved stereo sidechain input.
+    output,    // Pointer to floating point numbers. 32-bit interleaved stereo output. Can point to the same location with input (in-place processing).
+    128        // Number of frames to process. Recommendations for best performance: multiply of 4, minimum 64.
 );
 
 // Destructor (to free up memory).
