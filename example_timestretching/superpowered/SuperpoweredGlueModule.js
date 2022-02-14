@@ -123,6 +123,7 @@ class SuperpoweredGlue {
         let strings = [];
         for (let index = arguments.length - 1; index > 0; index--) {
             if (arguments[index].array != undefined) arguments[index] = arguments[index].array.byteOffset;
+            else if (arguments[index].__pointer__ != undefined) arguments[index] = arguments[index].__pointer__;
             else if (typeof arguments[index] == 'string') {
                 arguments[index] = this.__glue__.toWASMString(arguments[index]);
                 strings.push(arguments[index]);
@@ -145,6 +146,7 @@ class SuperpoweredGlue {
         let strings = [];
         for (let index = arguments.length - 1; index >= 0; index--) {
             if (arguments[index].array != undefined) arguments[index] = arguments[index].array.byteOffset;
+            else if (arguments[index].__pointer__ != undefined) arguments[index] = arguments[index].__pointer__;
             else if (typeof arguments[index] == 'string') {
                 arguments[index] = this.glue.toWASMString(arguments[index]);
                 strings.push(arguments[index]);
