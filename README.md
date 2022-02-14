@@ -11,8 +11,6 @@ For the most up-to-date information, see: https://superpowered.com/js-wasm-overv
 
 The JS/WASM SDK is contained in this repository. For C++ SDKs for native apps, we offer Superpowered C++ Audio SDK, C++ Networking SDK, and C++ Crypto SDK featuring low-power and real-time latency. They can be found here: https://github.com/superpoweredSDK/Low-Latency-Android-iOS-Linux-Windows-tvOS-macOS-Interactive-Audio-Platform/
 
-To create custom WebAssembly libraries using the Emscripten Bitcode version of the C++ SDK, please email hello@superpowered.com.
-
 
 # Supported Functionality
 

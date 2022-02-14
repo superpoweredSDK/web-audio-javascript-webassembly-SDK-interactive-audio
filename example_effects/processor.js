@@ -17,6 +17,11 @@ class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
         this.filter.enabled = true;
     }
 
+    onDestruct() {
+        this.reverb.destruct();
+        this.filter.destruct();
+    }
+
     onMessageFromMainScope(message) {
         if (typeof message.wet !== 'undefined') {
             this.reverb.wet = message.wet / 100;

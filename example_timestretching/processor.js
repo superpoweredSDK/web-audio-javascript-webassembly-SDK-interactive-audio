@@ -7,6 +7,10 @@ class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
         SuperpoweredTrackLoader.downloadAndDecode('../track.mp3', this);
     }
 
+    onDestruct() {
+        this.player.destruct();
+    }
+
     onMessageFromMainScope(message) {
         if (message.SuperpoweredLoaded) {
             this.player.openMemory(this.Superpowered.arrayBufferToWASM(message.SuperpoweredLoaded.buffer), false, false);
@@ -19,9 +23,7 @@ class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     }
 
     processAudio(inputBuffer, outputBuffer, buffersize, parameters) {
-        if (!this.player.processStereo(outputBuffer.pointer, false, buffersize, 1)) {
-            for (let n = 0; n < buffersize * 2; n++) outputBuffer.array[n] = 0;
-        };
+        if (!this.player.processStereo(outputBuffer.pointer, false, buffersize, 1)) this.Superpowered.memorySet(outputBuffer.pointer, 0, buffersize * 8);
     }
 }
 

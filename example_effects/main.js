@@ -47,16 +47,7 @@ async function toggleAudio() {
 async function loadJS() {
     // download and instantiate Superpowered
     Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
-    Superpowered.Initialize({
-        licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
-        enableAudioAnalysis: true,
-        enableFFTAndFrequencyDomain: false,
-        enableAudioTimeStretching: false,
-        enableAudioEffects: true,
-        enableAudioPlayerAndDecoder: false,
-        enableCryptographics: false,
-        enableNetworking: false
-    });
+    Superpowered.Initialize('ExampleLicenseKey-WillExpire-OnNextUpdate');
 
     // UI: innerHTML may be ugly but keeps this example small
     document.getElementById('content').innerHTML = '\

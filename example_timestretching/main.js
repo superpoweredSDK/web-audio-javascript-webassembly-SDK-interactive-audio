@@ -86,16 +86,7 @@ async function start() {
 async function loadJS() {
     // download and instantiate Superpowered
     Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
-    Superpowered.Initialize({
-        licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
-        enableAudioAnalysis: false,
-        enableFFTAndFrequencyDomain: false,
-        enableAudioTimeStretching: true,
-        enableAudioEffects: true,
-        enableAudioPlayerAndDecoder: true,
-        enableCryptographics: false,
-        enableNetworking: false
-    });
+    Superpowered.Initialize('ExampleLicenseKey-WillExpire-OnNextUpdate');
 
     // display the START button
     content = document.getElementById('content');

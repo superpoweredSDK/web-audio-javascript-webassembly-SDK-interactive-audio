@@ -47,16 +47,7 @@ importScripts('./superpowered/SuperpoweredGlue.js');
 var Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
 
 // Initialize Superpowered.
-Superpowered.Initialize({
-    licenseKey: 'ExampleLicenseKey-WillExpire-OnNextUpdate',
-    enableAudioAnalysis: false,
-    enableFFTAndFrequencyDomain: false,
-    enableAudioTimeStretching: true,
-    enableAudioEffects: true,
-    enableAudioPlayerAndDecoder: true,
-    enableCryptographics: false,
-    enableNetworking: false
-});
+Superpowered.Initialize('ExampleLicenseKey-WillExpire-OnNextUpdate');
 </code></pre>
 
 <h3>Linear Memory</h3>
@@ -100,6 +91,39 @@ someBuffer.free(); // Deallocate everything.
 new Superpowered.Uint8Buffer(...)
 new Superpowered.Int32Buffer(...)
 ...
+</code></pre>
+
+<p>The memoryCopy and memorySet functions are also available for quick memory operations:</p>
+
+<pre><code class="language-js">
+// Allocate two buffers, each with four 32-bit integer numbers (16 bytes).
+let buf1 = new Superpowered.Int32Buffer(4);
+let buf2 = new Superpowered.Int32Buffer(4);
+
+// buf1 to [ 0, 1, 2, 3 ], buf2 contains memory garbage
+buf1.array[0] = 0;
+buf1.array[1] = 1;
+buf1.array[2] = 2;
+buf1.array[3] = 3;
+
+// Copy in Linear Memory. Similar to memcpy in C.
+Superpowered.memoryCopy(
+    buf2.pointer, // Output pointer.
+    buf1.pointer, // Input pointer.
+    16            // Number of bytes to copy.
+);
+
+// buf2 is now [ 0, 1, 2, 3 ]
+
+// Set data in Linear Memory. Similar to memset in C.
+Superpowered.memoryset(
+    buf1.pointer, // Pointer to data.
+    0,            // Set this value to each byte. Should be between 0..255.
+    16            // Number of bytes to set.
+);
+
+// buf1 is now [ 0, 0, 0, 0 ]
+
 </code></pre>
 
 <h3>Web Audio</h3>
@@ -365,6 +389,51 @@ Superpowered.ShortIntToFloat(
     output, // Pointer to floating point numbers. Stereo interleaved 32-bit output.
     128,    // The number of frames to process.
     2       // The number of channels.
+);
+
+// Copy a mono channel into an interleaved buffer.
+Superpowered.CopyMonoToInterleaved(
+    monoInput,         // Pointer to floating point numbers. Mono input.
+    3,                 // Copy to this channel.
+    interleavedOutput, // Pointer to floating point numbers. Interleaved output.
+    4,                 // The total number of channels in the interleaved output.
+    128                // The number of frames to process.
+);
+
+// Copy interleaved stereo into an interleaved buffer.
+Superpowered.CopyStereoToInterleaved(
+    stereoInput,       // Pointer to floating point numbers. Stereo interleaved input.
+    2,                 // Copy to this channel pair. In this example, left channel goes to 2, right channel goes to 2 + 1.
+    interleavedOutput, // Pointer to floating point numbers. Interleaved output.
+    4,                 // The total number of channels in the interleaved output.
+    128,               // The number of frames to process.
+    1.0                // Multiply the output with this number (constant volume).
+);
+
+// Copy mono audio from an interleaved buffer.
+Superpowered.CopyMonoFromInterleaved(
+    interleavedInput, // Pointer to floating point numbers. Interleaved input.
+    4,                // The total number of channels in the interleaved input.
+    monoOutput,       // Pointer to floating point numbers. Mono output.
+    2,                // Copy this channel.
+    128               // The number of frames to process.
+);
+
+// Copy stereo audio from an interleaved buffer.
+Superpowered.CopyStereoFromInterleaved(
+    interleavedInput, // Pointer to floating point numbers. Interleaved input.
+    4,                // The total number of channels in the interleaved input.
+    stereoOutput,     // Pointer to floating point numbers. Stereo interleaved output.
+    2,                // Copy this channel. In this example, the channels 2 and 3 will go into stereoOutput.
+    128               // The number of frames to process.
+);
+
+// Get the peak values of each channel in an interleaved buffer.
+Superpowered.GetPeaks(
+    interleavedInput, // Pointer to floating point numbers. Interleaved input.
+    4,                // The total number of channels in the interleaved input.
+    128,              // The number of frames to process.
+    peaks             // Pointer to floating point numbers. Peak value result, should be able to store 4 values minimum in this example.
 );
 
 // Makes an interleaved stereo output from two mono input channels. Has no return value.
@@ -902,6 +971,16 @@ let changedOutput = echo.process(
     128     //Number of frames to process. Recommendation for best performance: multiply of 4, minimum 64.
 );
 
+// Processes the audio. Always call it in the audio processing callback, regardless if the effect is enabled or not for smooth, audio-artifact free operation.
+// It's never blocking for real-time usage. You can change all properties and call setMix() on any thread, concurrently with process().
+// If process() returns with true, the contents of output are replaced with the audio output. If process() returns with false, the contents of output are not changed.
+let changedOutput = echo.processWithFx(
+    input,  // Pointer to floating point numbers. 32-bit interleaved stereo input. Can point to the same location with output (in-place processing). Special case: input can be null, the effect will output the tail only in this case.
+    output, // Pointer to floating point numbers. 32-bit interleaved stereo output.
+    128,    // Number of frames to process. Recommendation for best performance: multiply of 4, minimum 64.
+    fx      // A Superpowered FX class instance, such as a Filter. It's process function will be used to add "coloring" to the echo sound.
+);
+
 // Destructor (to free up memory).
 echo.destruct();
 </code></pre>
@@ -931,6 +1010,16 @@ let output = delay.process(
     input, // Pointer to floating point numbers. 32-bit interleaved stereo input. Special case: set to null to empty all buffered content.
     128    // Number of frames to input and output.
 );
+
+// Processes the audio.
+// It's never blocking for real-time usage. You can change any properties concurrently with process().
+// Returns with a pointer to floating point numbers, which is the output with numberOfFrames audio available in it. It is valid until the next call to process().
+let output = delay.processWithFx(
+    input, // Pointer to floating point numbers. 32-bit interleaved stereo input. Special case: set to null to empty all buffered content.
+    128,   // Number of frames to input and output.
+    fx     // A Superpowered FX class instance, such as a Filter. It's process function will be used to add "coloring" to the delayed sound.
+);
+
 // If you want to "convert" the returned pointer to a JavaScript Float32Array, do this:
 let jsArray = new Float32Array(
     Superpowered.buffer, // Linear memory buffer of the Superpowered module instance.

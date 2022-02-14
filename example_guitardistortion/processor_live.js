@@ -8,6 +8,10 @@ class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
         this.distortion.enabled = true;
     }
 
+    onDestruct() {
+        this.distortion.destruct();
+    }
+
     onMessageFromMainScope(message) {
         for (let property in message) {
             if (typeof this.distortion[property] !== 'undefined') this.distortion[property] = message[property];
