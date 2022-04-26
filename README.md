@@ -48,9 +48,7 @@ The Superpowered Web Audio JavaScript and WebAssembly SDK supports the following
 
 Superpowered offers multiple support options.
 
-Developer Documentation (C++): https://superpowered.com/docs/
-
-Developer Documentation (Javascript): https://superpowered.com/js-wasm-sdk/docs.html
+Developer Documentation (C++ and JavaScript): https://docs.superpowered.com
 
 Email: support@superpowered.zendesk.com
 

@@ -109,7 +109,7 @@ class SuperpoweredWebAudio {
                 }.bind(node);
             });
         } else {
-            import(url).then((processorModule) => {
+            import(/* webpackIgnore: true */ url).then((processorModule) => {
                 let node = this.audioContext.createScriptProcessor(1024, 2, 2);
                 node.samplerate = this.audioContext.sampleRate;
                 node.inputBuffer = this.Superpowered.createFloatArray(1024 * 2);
