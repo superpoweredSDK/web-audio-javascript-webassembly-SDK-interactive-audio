@@ -1,4 +1,4 @@
-import { SuperpoweredGlue, SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './SuperpoweredModule.js';
 
 var webaudioManager = null; // The SuperpoweredWebAudio helper class managing Web Audio for us.
 var Superpowered = null; // Reference to the Superpowered module.
@@ -160,8 +160,9 @@ function onMessageFromAudioScope(message) {
 async function startSample() {
     content.innerText = 'Creating the audio context and node...';
     webaudioManager = new SuperpoweredWebAudio(44100, Superpowered);
-    let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    let currentPath = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
     audioNode = await webaudioManager.createAudioNodeAsync(currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
+    audioNode.sendMessageToAudioScope({ load: currentPath + '/track.mp3' });
 
     // audioNode -> audioContext.destination (audio output)
     webaudioManager.audioContext.suspend();
@@ -183,7 +184,7 @@ async function startInput() {
     });
     if (!micStream) return;
 
-    let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+    let currentPath = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
     audioNode = await webaudioManager.createAudioNodeAsync(currentPath + '/processor_live.js', 'MyProcessor', onMessageFromAudioScope);
     let audioInput = webaudioManager.audioContext.createMediaStreamSource(micStream);
     audioInput.connect(audioNode);
@@ -194,8 +195,7 @@ async function startInput() {
 
 async function loadJS() {
     // download and instantiate Superpowered
-    Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
-    Superpowered.Initialize('ExampleLicenseKey-WillExpire-OnNextUpdate');
+    Superpowered = await SuperpoweredGlue.Instantiate('ExampleLicenseKey-WillExpire-OnNextUpdate');
 
     // display the initial UI
     content = document.getElementById('content');

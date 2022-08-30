@@ -1,10 +1,9 @@
-import { SuperpoweredWebAudio, SuperpoweredTrackLoader } from './superpowered/SuperpoweredWebAudio.js';
+import { SuperpoweredWebAudio } from './SuperpoweredModule.js';
 
 class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     // runs after the constructor
     onReady() {
         this.player = new this.Superpowered.AdvancedAudioPlayer(this.samplerate, 2, 2, 0, 0.501, 2, false);
-        SuperpoweredTrackLoader.downloadAndDecode('../track.mp3', this);
     }
 
     onDestruct() {
@@ -18,6 +17,7 @@ class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
             this.sendMessageToMainScope({ loaded: true });
         }
 
+        if (typeof message.load !== 'undefined') this.Superpowered.downloadAndDecode(message.load, this);
         if (typeof message.rate !== 'undefined') this.player.playbackRate = message.rate / 10000.0;
         if (typeof message.pitchShift !== 'undefined') this.player.pitchShiftCents = parseInt(message.pitchShift) * 100;
     }

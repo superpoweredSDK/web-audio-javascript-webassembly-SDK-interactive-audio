@@ -1,4 +1,4 @@
-import { SuperpoweredGlue, SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './SuperpoweredModule.js';
 
 const states = { NOTRUNNING: 'START', INITIALIZING: 'INITIALIZING', RUNNING: 'STOP' }
 
@@ -30,7 +30,7 @@ async function toggleAudio() {
         });
         if (!micStream) return;
 
-        let currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        let currentPath = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
         audioNode = await webaudioManager.createAudioNodeAsync(currentPath + '/processor.js', 'MyProcessor', onMessageFromAudioScope);
         let audioInput = webaudioManager.audioContext.createMediaStreamSource(micStream);
         audioInput.connect(audioNode);
@@ -46,8 +46,7 @@ async function toggleAudio() {
 
 async function loadJS() {
     // download and instantiate Superpowered
-    Superpowered = await SuperpoweredGlue.fetch('./superpowered/superpowered.wasm');
-    Superpowered.Initialize('ExampleLicenseKey-WillExpire-OnNextUpdate');
+    Superpowered = await SuperpoweredGlue.Instantiate('ExampleLicenseKey-WillExpire-OnNextUpdate');
 
     // UI: innerHTML may be ugly but keeps this example small
     document.getElementById('content').innerHTML = '\

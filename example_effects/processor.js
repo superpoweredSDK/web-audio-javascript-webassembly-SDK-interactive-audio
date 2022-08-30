@@ -1,4 +1,4 @@
-import { SuperpoweredWebAudio } from './superpowered/SuperpoweredWebAudio.js';
+import { SuperpoweredWebAudio } from './SuperpoweredModule.js';
 
 function calculateFrequency(value, minFreq, maxFreq) {
     if (value > 0.97) return maxFreq;
