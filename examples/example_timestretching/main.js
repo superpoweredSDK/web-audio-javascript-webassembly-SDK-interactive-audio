@@ -1,4 +1,4 @@
-import './Superpowered.js';
+import './superpowered.min.js';
 
 var webaudioManager = null; // The SuperpoweredWebAudio helper class managing Web Audio for us.
 var Superpowered = null; // A Superpowered instance.

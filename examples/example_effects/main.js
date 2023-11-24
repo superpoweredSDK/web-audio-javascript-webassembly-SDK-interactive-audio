@@ -1,4 +1,4 @@
-import './Superpowered.js';
+import './superpowered.min.js';
 
 const states = { NOTRUNNING: 'START', INITIALIZING: 'INITIALIZING', RUNNING: 'STOP' }
 
