@@ -2,8 +2,8 @@
   "name": "@superpoweredsdk/web",
   "version": "2.6.4",
   "description": "Superpowered interactive audio features in JavaScript + WebAssembly.",
-  "main": "dist/superpowered.min.js",
-  "browser": "dist/superpowered.min.js",
+  "main": "dist/Superpowered.js",
+  "browser": "dist/Superpowered.js",
   "directories": {
     "example": "examples"
   },
@@ -23,5 +23,5 @@
   "bugs": {
     "url": "https://github.com/superpoweredSDK/web-audio-javascript-webassembly-SDK-interactive-audio/issues"
   },
-  "homepage": "https://docs.superpowered.com/"
+  "homepage": "https://docs.superpowered.com"
 }

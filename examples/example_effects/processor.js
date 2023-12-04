@@ -1,4 +1,4 @@
-import './superpowered.min.js';
+import './Superpowered.js';
 
 function calculateFrequency(value, minFreq, maxFreq) {
     if (value > 0.97) return maxFreq;
