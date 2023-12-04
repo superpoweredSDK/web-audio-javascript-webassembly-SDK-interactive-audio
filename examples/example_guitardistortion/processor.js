@@ -1,4 +1,4 @@
-import './Superpowered.js';
+import './superpowered.min.js';
 
 class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     // runs after the constructor

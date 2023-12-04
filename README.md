@@ -1,4 +1,4 @@
-<p align="center"><img width="450" src="https://superpowered.com/images/superpowered-animated.svg"></p>
+<p align="center"><img width="450" src="https://superpowered.com/images/logo.png"></p>
 
 Superpowered Inc develops the Superpowered Web Audio JavaScript and WebAssembly SDK ("JS/WASM SDK") for modern web browsers, websites, progressive web apps and more.
 
@@ -11,6 +11,13 @@ For the most up-to-date information, see: https://superpowered.com/js-wasm-overv
 
 The JS/WASM SDK is contained in this repository. For C++ SDKs for native apps, we offer Superpowered C++ Audio SDK, C++ Networking SDK, and C++ Crypto SDK featuring low-power and real-time latency. They can be found here: https://github.com/superpoweredSDK/Low-Latency-Android-iOS-Linux-Windows-tvOS-macOS-Interactive-Audio-Platform/
 
+# Installation and Usage
+
+```
+npm install @superpoweredsdk/web
+```
+
+See usage guide over at https://docs.superpowered.com/getting-started/how-to-integrate?lang=js
 
 # Supported Functionality
 
