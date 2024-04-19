@@ -1,0 +1,5 @@
+#pitchBend {
+    transform: rotate(-90deg) translateY(calc(300 / 2));
+    transform-origin: left;
+    position: absolute;
+}

@@ -1,8 +1,9 @@
 /* eslint-disable */
+// @ts-nocheck
 
 class SuperpoweredGlue {
 
-    static wasmCDNUrl = "https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.6.6/dist/superpowered-npm.wasm"
+    static wasmCDNUrl = "https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.6.7/dist/superpowered-npm.wasm"
 
     niceSize(bytes) {
         if (bytes == 0) return '0 byte'; else if (bytes == 1) return '1 byte';
@@ -748,7 +749,7 @@ class SuperpoweredWebAudio {
                 }.bind(node);
             });
         } else {
-            import(/* webpackIgnore: true */ url).then((processorModule) => {
+            import(/* webpackIgnore: true */ /* viteIgnore: true */ url).then((processorModule) => {
                 const node = this.audioContext.createScriptProcessor(1024, 2, 2);
                 node.trackLoaderID = this.Superpowered.registerTrackLoader(node);
                 node.samplerate = this.audioContext.sampleRate;
