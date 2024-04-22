@@ -1,7 +1,6 @@
 import "./Superpowered.js";
 
 class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
-    // runs after the constructor
     cancelledPitchBend = true;
 
     onReady() {
@@ -13,7 +12,6 @@ class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     }
 
     onMessageFromMainScope(message) {
-        // console.log('onMessageFromMainScope', message)
         if (message.SuperpoweredLoaded) {
             this.player.openMemory(this.Superpowered.arrayBufferToWASM(message.SuperpoweredLoaded.buffer), false, false);
             this.player.play();
@@ -33,11 +31,10 @@ class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     processAudio(inputBuffer, outputBuffer, buffersize, parameters) {
         if (this.pitchBend) {
             this.player.pitchBend(this.pitchBend.maxPercent, this.pitchBend.bendStretch, this.pitchBend.faster, this.pitchBend.holdMs);
-            if (this.cancelledPitchBend) this.cancelledPitchBend = false;
         } else if (!this.cancelledPitchBend) {
             this.player.endContinuousPitchBend();
-            this.cancelledPitchBend = true;
         }
+        this.cancelledPitchBend = !this.cancelledPitchBend;
         this.currentPitchBend = this.player.getCurrentPitchBendPercent();
         this.currentPitchBendMsOffset = this.player.getBendOffsetMs();
         if (!this.player.processStereo(outputBuffer.pointer, false, buffersize, 1)) this.Superpowered.memorySet(outputBuffer.pointer, 0, buffersize * 8);

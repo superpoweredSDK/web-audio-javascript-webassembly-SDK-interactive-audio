@@ -1,4 +1,4 @@
-import "./Superpowered.js";
+import "./assets/Superpowered.js";
 
 var webaudioManager = null; // The SuperpoweredWebAudio helper class managing Web Audio for us.
 var Superpowered = null; // A Superpowered instance.
@@ -10,11 +10,14 @@ var pbPerc = null;
 
 function changePitchShift(e) {
     // limiting the new pitch shift value
-    let value = parseInt(e.target.value);
-    pitchShift += value;
-    if (pitchShift < -12) pitchShift = -12; else if (pitchShift > 12) pitchShift = 12;
+    // let value = parseInt(e.target.value);
+    // pitchShift += value;
+
+    pitchShift = Math.min(12, Math.max(-12, pitchShift + parseInt(e.target.value)));
+
+    // if (pitchShift < -12) pitchShift = -12; else if (pitchShift > 12) pitchShift = 12;
     // displaying the value
-    document.getElementById('pitch-shift-display').innerText = ' pitch shift: ' + ((pitchShift < 1) ? pitchShift : '+' + pitchShift) + ' ';
+    document.getElementById('pitch-shift-display').textContent = ' pitch shift: ' + ((pitchShift < 1) ? pitchShift : '+' + pitchShift) + ' ';
     // sending the new value to the audio node
     audioNode.sendMessageToAudioScope({ 'pitchShift': pitchShift });
 }
@@ -26,23 +29,20 @@ function changeRate() {
     if (value == 10000) text = 'original tempo';
     else if (value < 10000) text = '-' + (100 - value / 100).toPrecision(2) + '%';
     else text = '+' + (value / 100 - 100).toPrecision(2) + '%';
-    document.getElementById('rateDisplay').innerText = text;
+    document.getElementById('rateDisplay').textContent = text;
     // sending the new rate to the audio node
     audioNode.sendMessageToAudioScope({ rate: value });
 }
 
 function changePitchBend(e) {
-    let faster = 1;
+    console.log(Number(document.getElementById('holdMsSelect').value));
     const value = e.target.value;
-    if (value < 0) {
-        faster = 0;
-    }
     audioNode.sendMessageToAudioScope({
         'pitchBend': true,
         maxPercent: Math.abs(value/100),
         bendStretch: 0,
-        faster,
-        holdMs: 100
+        faster: value < 0 ? 0 : 1,
+        holdMs: Number(document.getElementById('holdMsSelect').value)
     });
 }
 
@@ -60,7 +60,7 @@ function changeBendDbl() {
         maxPercent: 0,
         bendStretch: 0,
         faster: 0,
-        holdMs: 100
+        holdMs: Number(document.getElementById('holdMsSelect').value)
     });
 }
 
@@ -69,11 +69,11 @@ function togglePlayback(e) {
     let button = document.getElementById('playPause');
     if (button.value == 1) {
         button.value = 0;
-        button.innerText = 'Play audio';
+        button.textContent = 'Play audio';
         webaudioManager.audioContext.suspend();
     } else {
         button.value = 1;
-        button.innerText = 'Pause audio';
+        button.textContent = 'Pause audio';
         webaudioManager.audioContext.resume();
     }
 }
@@ -82,22 +82,25 @@ function onMessageFromAudioScope(message) {
     if (message.loaded) {
         // UI: innerHTML may be ugly but keeps this example small
         content.innerHTML = '\
-            <h1>Superpowered AAP pitch bending</h1>\
             <button id="playPause" value="0">Play audio</button>\
-            <h2>Pitch bend percentage</h2>\
-            <div style="display: flex; justify-content: space-between;"><span>-30%</span><span>0%</span><span>+30%</span></div>\
+            <h3>Pitch bend holdMs</h3>\
+            <select id="holdMsSelect"><option>40</option><option>200</option><option>300</option><option>600</option><option>1000</option></select><span>ms</span>\
+            <h3>Pitch bend percentage</h3>\
+            <div style="width: 100%; display: flex; justify-content: space-between;"><span>-30%</span><span>0%</span><span>+30%</span></div>\
             <input id="pitchBend" type="range" min="-30" max="30" value="0" style="width: 100%">\
-            <div style="background: #909090; width: 100%; postion: relative;" id="bend-container"><div style="width: 50%; height: 10px; background: black;" id="bend-value"></div></div>\
-            <div style="text-align: center;"><span>Current pitch bend percentage <span id="pitch-bend-percentage">100</span>%</span></div><br />\
+            <div style="overflow: hidden; border-radius: 5px; background: #909090; width: 100%; postion: relative;" id="bend-container"><div style="width: 50%; height: 10px; background: black;" id="bend-value"></div></div>\
+            <div style="text-align: center;"><span><span id="pitch-bend-percentage">100</span>%</span></div><br />\
             <button id="reset-bend">Reset pitch bend</button>\
-            <h2>Playback Rate:</h2>\
-            <p id="rateDisplay">original tempo</p>\
-            <div style="display: flex; justify-content: space-between;"><span>-50%</span><span>+100%</span></div>\
+            <h3>Playback rate</h3>\
+            <span id="rateDisplay">original tempo</span>\
+            <div style="width: 100%; display: flex; justify-content: space-between;"><span>-50%</span><span>+100%</span></div>\
             <input id="rateSlider" type="range" min="5000" max="20000" value="10000" style="width: 100%">\
             <button id="reset-rate">Reset playback rate</button> <br /><br />\
+            <div>\
             <button id="pitchMinus" value="-1">-</button>\
             <span id="pitch-shift-display"> pitch shift: 0 </span>\
             <button id="pitchPlus" value="1">+</button>\
+            </div>\
         ';
         document.getElementById('rateSlider').addEventListener('input', changeRate);
         document.getElementById('pitchBend').addEventListener('input', changePitchBend);
@@ -112,7 +115,7 @@ function onMessageFromAudioScope(message) {
     }
     if (message.pitchBendDetails && document.getElementById('bend-value')) {
         if (pbPerc && (typeof message.pitchBendDetails.currentPitchBend !== 'undefined')) {
-            pbPerc.innerText = message.pitchBendDetails.currentPitchBend * 100;
+            pbPerc.textContent = message.pitchBendDetails.currentPitchBend * 100;
             document.getElementById('bend-value').style.width = convertRange(message.pitchBendDetails.currentPitchBend * 100, [70, 130], [0, 100]) + '%';
             document.getElementById('bend-value').style.background = message.pitchBendDetails.currentPitchBend === 1 ? 'black' : message.pitchBendDetails.currentPitchBend < 1 ? 'red' : 'green';
         }
@@ -130,10 +133,9 @@ function requestPitchBendDetails() {
 
 // when the START button is clicked
 async function start() {
-    // content.innerText = 'Creating the audio context and node...';
     webaudioManager = new SuperpoweredWebAudio(44100, Superpowered);
     currentPath = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-    audioNode = await webaudioManager.createAudioNodeAsync(currentPath + '/processor.js?date=' + Date.now(), 'MyProcessor', onMessageFromAudioScope);
+    audioNode = await webaudioManager.createAudioNodeAsync(window.location.href + '/assets/processor.js?date=' + Date.now(), 'MyProcessor', onMessageFromAudioScope);
     // audioNode -> audioContext.destination (audio output)
     webaudioManager.audioContext.suspend();
     audioNode.connect(webaudioManager.audioContext.destination);
@@ -143,18 +145,18 @@ async function start() {
 }
 
 async function loadFromMainThread() {
-    Superpowered.downloadAndDecode(currentPath + '/track.mp3', audioNode);
+    Superpowered.downloadAndDecode(window.location.href + '/assets/track.mp3', audioNode);
 }
 
 async function loadJS() {
-    Superpowered = await SuperpoweredGlue.Instantiate('ExampleLicenseKey-WillExpire-OnNextUpdate', 'http://localhost:8080/superpowered-npm.wasm');
+    Superpowered = await SuperpoweredGlue.Instantiate('ExampleLicenseKey-WillExpire-OnNextUpdate', `${window.location.href}/assets/superpowered-npm.wasm`);
     
     // display the START button
     content = document.getElementById('content');
     content.innerHTML = `<div>
-            <button id="loadFromMainThread">Start</button>
+            <button id="startApplication">Start</button>
     </div>`;
-    document.getElementById('loadFromMainThread').addEventListener('click', loadFromMainThread);
+    document.getElementById('startApplication').addEventListener('click', loadFromMainThread);
     start();
 }
 
