@@ -3,7 +3,7 @@
 
 class SuperpoweredGlue {
 
-    static wasmCDNUrl = "https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.6.7/dist/superpowered-npm.wasm"
+    static wasmCDNUrl = "https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.6.8/dist/superpowered-npm.wasm"
 
     niceSize(bytes) {
         if (bytes == 0) return '0 byte'; else if (bytes == 1) return '1 byte';
