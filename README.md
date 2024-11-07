@@ -4,7 +4,7 @@ Superpowered Inc develops the Superpowered Web Audio JavaScript and WebAssembly 
 
 Developers can use Superpowered interactive audio features in JavaScript without the need of building, initializing or even touching WebAssembly or C++.
 
-For the most up-to-date information, see: https://superpowered.com/js-wasm-overview
+For the most up-to-date information, see: https://docs.superpowered.com/?lang=js
 
 
 # JavaScript + WebAssembly
@@ -31,7 +31,7 @@ See usage guide over at https://docs.superpowered.com/getting-started/how-to-int
 - Time domain to frequency domain, frequency domain to time domain
 - Time Stretching, Pitch Shifting
 - FFT: complex, real, real-polar
-- Web Audio I/O, support for ScriptProcessorNode, Workers, Worklets and Audio Worklet
+- Web Audio I/O, support for Workers, Worklets and Audio Worklet
 
 
 # Demos

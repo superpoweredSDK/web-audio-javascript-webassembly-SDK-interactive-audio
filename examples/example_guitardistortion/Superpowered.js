@@ -1,418 +1,356 @@
 /* eslint-disable */
-// @ts-nocheck
+// @ts-check
+/// <reference lib="webworker" />
+
+class LinearMemoryBuffer {
+    /**@type {number} */pointer;
+    /**@type {number} */length;
+    /**@type {number} */#type;
+    /**@type {SuperpoweredGlue} */#glue;
+    /**@type {Int8Array|Int16Array|Int32Array|BigInt64Array|Uint8Array|Uint16Array|Uint32Array|BigUint64Array|Float32Array|Float64Array} */array;
+    /**@type {any[]}*/ static #types = [ null, Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, BigUint64Array, BigInt64Array, Float32Array, Float64Array ];
+
+    constructor(/**@type {number} */pointer, /**@type {number} */length, /**@type {number} */type, /**@type {SuperpoweredGlue}*/glue) {
+        this.length = length;
+        this.#type = type;
+        this.#glue = glue;
+        this.pointer = (pointer == 0) ? glue.malloc(length * LinearMemoryBuffer.#types[this.#type].BYTES_PER_ELEMENT) : pointer;
+        this.update();
+        this.#glue.addBuffer(this);
+    }
+
+    update() {
+        const ab = this.#glue.linearMemory, t = LinearMemoryBuffer.#types[this.#type];
+        this.array = new t(ab, this.pointer, (this.length < 0) ? Math.floor((ab.byteLength - this.pointer) / t.BYTES_PER_ELEMENT) : this.length);
+    }
+
+    free() {
+        this.#glue.free(this.pointer);
+        this.#glue.removeBuffer(this);
+    }
+}
 
 class SuperpoweredGlue {
+    static wasmCDNUrl = 'https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.7.2/dist/superpowered-npm.wasm';
 
-    static wasmCDNUrl = "https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.6.8/dist/superpowered-npm.wasm"
+    /**@type {number}*/id = Math.floor(Math.random() * Date.now());
+    /**@type {ArrayBuffer}*/linearMemory;
+    /**@type {ArrayBuffer} */wasmCode;
+    /**@type {boolean} */logMemory = true;
 
-    niceSize(bytes) {
-        if (bytes == 0) return '0 byte'; else if (bytes == 1) return '1 byte';
-        const postfix = [ ' bytes', ' kb', ' mb', ' gb', ' tb' ], n = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
-        return Math.round(bytes / Math.pow(1024, n), 2) + postfix[n];
-    }
+    /**@type {Map<number,object>}*/#trackLoaderReceivers = new Map();
+    /**@type {number}*/#nextTrackLoaderReceiverID = 0;
+    /**@type {Map<number,Set<LinearMemoryBuffer>>}*/#buffers = new Map();
+    /**@type {object}*/#classUnderConstruction = null;
+    /**@type {Map<string,Map<string,Function>>}*/#functionsWithNamespace = new Map();
+    /**@type {object}*/#exportsToWASM;
+    /**@type {Uint8Array}*/#memoryGrowArray;
+    /**@type {number}*/#memoryGrowPointer;
+    /**@type {WebAssembly.Instance}*/#wasmInstance;
+    /**@type {string|undefined} */#trackLoaderSource = undefined;
+    /**@type {Function} */#malloc;
+    /**@type {Function} */#free;
+    /**@type {Function} */#heapBase;
+    /**@type {Function} */#stackSize;
+    /**@type {Function} */#lastArrayLength;
+    /**@type {Function} */#setInt64;
+    /**@type {DataView} */#view;
+    /**@type {boolean} */#littleEndian = (new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44);
     
-    createFloatArray(length) {
-        return this.createViewFromType(9, this.malloc(length * 4), length);
-    }
-    
-    static async Instantiate(licenseKey, wasmUrl = SuperpoweredGlue.wasmCDNUrl) {
+    /**@returns {Promise<SuperpoweredGlue>} */
+    static async Instantiate(/**@type {string}*/licenseKey, /**@type {string}*/wasmUrl = SuperpoweredGlue.wasmCDNUrl, /**@type {boolean}*/sharedArrayBuffer = false) {
         SuperpoweredGlue.wasmCDNUrl = wasmUrl;
         const obj = new SuperpoweredGlue();
-        await fetch(wasmUrl).then(response => response.arrayBuffer() ).then(bytes => obj.loadFromArrayBuffer(bytes) );
-        obj.Initialize(licenseKey);
+        const ab = await fetch(wasmUrl).then(response => response.arrayBuffer());
+        await obj.loadFromArrayBuffer(sharedArrayBuffer ? SuperpoweredGlue.getWASMWithSharedArrayBufferEnabled(ab) : ab);
+        obj['Initialize'](licenseKey);
         return obj;
     }
+
+    async loadFromArrayBuffer(/**@type {ArrayBuffer}*/wasmCode, /**@type {object}*/afterWASMLoaded = null) {
+        this.wasmCode = wasmCode;
+        await WebAssembly.instantiate(wasmCode, { wasi_snapshot_preview1: this.wasi, env: this.#exportsToWASM }).then((result) => {
+            this.setInstance(result.instance);
+            if (afterWASMLoaded != null) afterWASMLoaded.afterWASMLoaded();
+        });
+    }
+
+    async loadFromModule(/**@type {BufferSource}*/module) {
+        await WebAssembly.instantiate(module, { wasi_snapshot_preview1: this.wasi, env: this.#exportsToWASM }).then((result) => this.setInstance(result.instance));
+    }
+
+    async loadFromURL(/**@type {string}*/url, /**@type {boolean}*/storeCode = true) {
+        const wasmCode = await fetch(url).then(response => response.arrayBuffer());
+        if (storeCode) this.wasmCode = wasmCode;
+        await WebAssembly.instantiate(wasmCode, { wasi_snapshot_preview1: this.wasi, env: this.#exportsToWASM }).then((result) => this.setInstance(result.instance));
+    }
+
+    /**@returns {ArrayBuffer} */
+    static getWASMWithSharedArrayBufferEnabled(/**@type {ArrayBuffer} */wasm) {
+        const v = new DataView(wasm), to = wasm.byteLength, result = new Uint8Array(wasm.byteLength);
+        result.set(new Uint8Array(wasm));
+        let pos = 8, sectionSize, shift;
+        while (pos < to) {
+            const sectionType = v.getUint8(pos++);
+
+            sectionSize = shift = 0;
+            while (pos < to) {
+                const byte = v.getUint8(pos++);
+                sectionSize |= (byte & 127) << shift;
+                if ((byte & 128) == 0) break; else shift += 7;
+            }
+
+            if (sectionType == 5) {
+                result[pos + 1] = 3;
+                break;
+            } else pos += sectionSize;
+        }
+        return result.buffer;
+    }
     
-    constructor() {
-        this.id = Math.floor(Math.random() * Date.now());
-        this.linearMemory = null;
-        this.__lastObject__ = null;
-        this.__classUnderConstruction__ = null;
-        this.__functions__ = {};
-        this.__classes__ = {};
-        this.__exportsToWasm__ = {};
-        this.__views__ = new Set();
-        this.trackLoaderReceivers = [];
-    
+    constructor() {    
         const glue = this;
-        this.Uint8Buffer = class { constructor(length) { return glue.createViewFromType(1, glue.malloc(length), length); } }
-        this.Int8Buffer = class { constructor(length) { return glue.createViewFromType(2, glue.malloc(length), length); } }
-        this.Uint16Buffer = class { constructor(length) { return glue.createViewFromType(3, glue.malloc(length * 2), length); } }
-        this.Int16Buffer = class { constructor(length) { return glue.createViewFromType(4, glue.malloc(length * 2), length); } }
-        this.Uint32Buffer = class { constructor(length) { return glue.createViewFromType(5, glue.malloc(length * 4), length); } }
-        this.Int32Buffer = class { constructor(length) { return glue.createViewFromType(6, glue.malloc(length * 4), length); } }
-        this.BigUint64Buffer = class { constructor(length) { return glue.createViewFromType(7, glue.malloc(length * 8), length); } }
-        this.BigInt64Buffer = class { constructor(length) { return glue.createViewFromType(8, glue.malloc(length * 8), length); } }
-        this.Float32Buffer = class { constructor(length) { return glue.createViewFromType(9, glue.malloc(length * 4), length); } }
-        this.Float64Buffer = class { constructor(length) { return glue.createViewFromType(10, glue.malloc(length * 8), length); } }
-    
-        this.__exportsToWasm__.consolelog = this.consolelog.bind(this);
-        this.__exportsToWasm__.emscripten_notify_memory_growth = this.onMemoryGrowth.bind(this);
-    
-        this.__exportsToWasm__.__createClass__ = this.createClass.bind(this);
-        this.__exportsToWasm__.__createStaticProperty__ = this.createStaticProperty.bind(this);
-        this.__exportsToWasm__.__createStaticMethod__ = this.createStaticMethod.bind(this);
-        this.__exportsToWasm__.__createConstructor__ = this.createConstructor.bind(this);
-        this.__exportsToWasm__.__createDestructor__ = this.createDestructor.bind(this);
-        this.__exportsToWasm__.__createProperty__ = this.createProperty.bind(this);
-        this.__exportsToWasm__.__createMethod__ = this.createMethod.bind(this);
-        this.__exportsToWasm__.__createFunction__ = this.createFunction.bind(this);
-        this.__exportsToWasm__.__createClassConstant__ = this.createClassConstant.bind(this);
-        this.__exportsToWasm__.__createConstant__ = this.createConstant.bind(this);
-        this.__exportsToWasm__.__runjs__ = function(pointer) {
-            return eval(this.toString(pointer));
-        }.bind(this);
-    
-        this.__exportsToWasm__.abs = function(value) { return Math.abs(value); }
-        this.__exportsToWasm__.round = function(value) { return Math.round(value); }
-        this.__exportsToWasm__.roundf = function(value) { return Math.fround(value); }
-    
-        this.wasi = {
-            proc_exit: function() { console.log('abort'); },
+        this.Uint8Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 1, glue); } }
+        this.Int8Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 2, glue); } }
+        this.Uint16Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 3, glue); } }
+        this.Int16Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 4, glue); } }
+        this.Uint32Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 5, glue); } }
+        this.Int32Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 6, glue); } }
+        this.BigUint64Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 7, glue); } }
+        this.BigInt64Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 8, glue); } }
+        this.Float32Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 9, glue); } }
+        this.Float64Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 10, glue); } }
+        this.#exportsToWASM = {
+            consolelog: (/**@type {number}*/pointer, /**@type {number}*/strlen) => console.log(this.toString(pointer, strlen)),
+            emscripten_notify_memory_growth: this.#onMemoryGrowth.bind(this),
+            __createClass__: this.#createClass.bind(this),
+            __createStaticProperty__: this.#createStaticProperty.bind(this),
+            __createStaticMethod__: this.#createStaticMethod.bind(this),
+            __createConstructor__: () => {},
+            __createDestructor__: () => {},
+            __createProperty__: this.#createProperty.bind(this),
+            __createMethod__: this.#createMethod.bind(this),
+            __createFunction__: this.#createFunction.bind(this),
+            __createClassConstant__: (/**@type {number}*/nameptr, /**@type {number}*/namelen, /**@type {number}*/value) => this.#classUnderConstruction[this.toString(nameptr, namelen)] = value,
+            __createConstant__: (/**@type {number}*/nameptr, /**@type {number}*/namelen, /**@type {number}*/value) => this[this.toString(nameptr, namelen)] = value,
+            __runjs__: (/**@type {number}*/pointer) => { return eval(this.toString(pointer)); },
+            abs: Math.abs,
+            round: Math.round,
+            roundf: Math.fround,
+            abort: () => console.log('abort')
         };
+        this.wasi = { proc_exit: () => console.log('abort') };
     }
+
+    setInstance(/**@type {WebAssembly.Instance}*/wasmInstance) {
+        this.#wasmInstance = wasmInstance;
+        /**@type {Function}*/(this.#wasmInstance.exports._initialize)();
+
+        this.#lastArrayLength = /**@type {Function}*/(this.#wasmInstance.exports.__lastarraylength__);
+        this.#malloc = /**@type {Function}*/(this.#wasmInstance.exports.__malloc__);
+        this.#stackSize = /**@type {Function}*/(this.#wasmInstance.exports.__stacksize__);
+        this.#heapBase = /**@type {Function}*/(this.#wasmInstance.exports.__heapbase__);
+        this.#free = /**@type {Function}*/(this.#wasmInstance.exports.__free__);
+        this.#setInt64 = /**@type {Function}*/(this.#wasmInstance.exports.__setint64__);
+
+        this.linearMemory = this.#wasmInstance.exports.memory['buffer'];
+        this.#view = new DataView(this.linearMemory);
+        this.#memoryGrowPointer = this.#malloc(16);
+        this.#memoryGrowArray = new Uint8Array(this.linearMemory, this.#memoryGrowPointer, 16);
     
-    updateBuffer(buffer, arraybuffer) {
-        buffer.__arraybuffer__ = arraybuffer;
-        switch (buffer.__type__) {
-            case 1: buffer.array = new Uint8Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) : buffer.length); break;
-            case 2: buffer.array = new Int8Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) : buffer.length); break;
-            case 3: buffer.array = new Uint16Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 2 : buffer.length); break;
-            case 4: buffer.array = new Int16Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 2 : buffer.length); break;
-            case 5: buffer.array = new Uint32Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 4 : buffer.length); break;
-            case 6: buffer.array = new Int32Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 4 : buffer.length); break;
-            case 7: buffer.array = new BigUint64Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 8 : buffer.length); break;
-            case 8: buffer.array = new BigInt64Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 8 : buffer.length); break;
-            case 9: buffer.array = new Float32Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 4 : buffer.length); break;
-            case 10: buffer.array = new Float64Array(buffer.__arraybuffer__, buffer.pointer, (buffer.length < 0) ? (buffer.__arraybuffer__.byteLength - buffer.pointer) / 8 : buffer.length); break;
+        const outputBuffer = this.#malloc(1024), stringview = new Uint8Array(this.linearMemory, this.#malloc(1024), 1024), demangle = /**@type {Function}*/(this.#wasmInstance.exports.__demangle__);
+        for (const name in this.#wasmInstance.exports) if (name != '__demangle__') {
+            const length = demangle(this.toWASMString(name, stringview), outputBuffer), func = /**@type {Function}*/(this.#wasmInstance.exports[name]);
+            if (length > 0) {
+                let demangledName = this.toString(outputBuffer, length);
+                const par = demangledName.indexOf('(');
+                if (par > 0) demangledName = demangledName.substring(0, par);
+
+                let namespace = demangledName.lastIndexOf('::');
+                if (namespace > 0) {
+                    namespace = demangledName.lastIndexOf('::', namespace - 1);
+                    if (namespace > 0) demangledName = demangledName.substr(namespace + 2);
+                }
+
+                // class members have namespaces removed from this point, but functions not
+                const split = demangledName.split('::', 2);
+                if (split.length == 2) {
+                    let map = this.#functionsWithNamespace.get(split[0]);
+                    if (!map) {
+                        map = new Map();
+                        this.#functionsWithNamespace.set(split[0], map);
+                    }
+                    map.set(split[1], func);
+                }
+                this[demangledName] = func;
+            } else this[name] = func;
         }
+        this.#free(outputBuffer);
+        this.#free(stringview.byteOffset);
+
+        /**@type {Function}*/(this.#wasmInstance.exports.__initialize__)();
+        for (const [name, map] of this.#functionsWithNamespace) map.clear();
+        this.#functionsWithNamespace.clear();
+        this.#logMemory();
+        this.#classUnderConstruction = null;
     }
-    
-    createViewFromType(type, pointer, length) {
-        const buffer = {
-            pointer: pointer,
-            length: length,
-            __arraybuffer__: this.linearMemory,
-            __type__: type,
-            __glue__: this,
-            free() {
-                this.__glue__.free(this.pointer);
-                Object.getOwnPropertyNames(this).forEach((property) => delete this[property] );
-                Object.setPrototypeOf(this, null);
-            }
-        };
-        this.updateBuffer(buffer, this.linearMemory);
-        this.__views__.add(buffer);
-        return buffer;
+
+    /**@returns {LinearMemoryBuffer|number|undefined} */
+    returnPointerToView(/**@type {number|undefined}*/pointer, /**@type {number}*/type) {
+        if ((type < 1) || (pointer == undefined)) return pointer;
+        const length = this.#lastArrayLength();
+        return new LinearMemoryBuffer(pointer, length > 0 ? length : -1, type, this);
     }
-    
-    returnPointerToView(r, type) {
-        if ((type > 0) && (typeof r !== 'undefined')) {
-            const length = this.__functions__.__lastarraylength__();
-            r = this.createViewFromType(type, r, length > 0 ? length : -1);
-        }
-        return r;
-    }
-    
-    invokeMethod() {
-        if ((arguments.length == 2) && (typeof arguments[1] == 'object')) {
-            const obj = arguments[1]; let n = 1;
+
+    /**@returns {LinearMemoryBuffer|number|undefined} */
+    #invokeFunction(/**@type {number}*/pointerToInstance, /**@type {Function} */func, /**@type {number} */returnPointerType) { 
+        if ((arguments.length == 4) && (typeof arguments[3] == 'object')) {
+            const obj = arguments[3]; let n = 0;
             for (const m in obj) arguments[n++] = obj[m];
             arguments.length = n;
         }
-        const strings = [];
-        for (let index = arguments.length - 1; index > 0; index--) {
-            if (arguments[index].array != undefined) arguments[index] = arguments[index].array.byteOffset;
-            else if (arguments[index].__pointer__ != undefined) arguments[index] = arguments[index].__pointer__;
+        
+        const strings = [], args = [], to = arguments.length;
+        if (pointerToInstance != 0) args.push(pointerToInstance);
+        for (let index = 3; index < to; index++) {
+            if (arguments[index].array != undefined) args.push(arguments[index].array.byteOffset);
+            else if (arguments[index].pointerToInstance != undefined) args.push(arguments[index].pointerToInstance);
             else if (typeof arguments[index] == 'string') {
-                arguments[index] = this.__glue__.toWASMString(arguments[index]);
-                strings.push(arguments[index]);
-            }
+                const str = this.toWASMString(arguments[index]);
+                args.push(str);
+                strings.push(str);
+            } else args.push(arguments[index]);
         }
-        const info = arguments[0];
-        arguments[0] = this.__pointer__;
-        let r = info.function.apply(this, arguments);
-        for (const string of strings) this.__glue__.free(string);
-        r = this.__glue__.returnPointerToView(r, info.returnPointerType);
-        return r;
+
+        const r = func.apply(func, args);
+        for (const string of strings) this.free(string);
+        return this.returnPointerToView(r, returnPointerType);
     }
-    
-    invokeFunction() {
-        if ((arguments.length == 1) && (typeof arguments[0] == 'object')) {
-            const obj = arguments[0]; let n = 0;
-            for (const m in obj) arguments[n++] = obj[m];
-            arguments.length = n;
-        }
-        const strings = [];
-        for (let index = arguments.length - 1; index >= 0; index--) {
-            if (arguments[index].array != undefined) arguments[index] = arguments[index].array.byteOffset;
-            else if (arguments[index].__pointer__ != undefined) arguments[index] = arguments[index].__pointer__;
-            else if (typeof arguments[index] == 'string') {
-                arguments[index] = this.glue.toWASMString(arguments[index]);
-                strings.push(arguments[index]);
-            }
-        }
-        let r = this.apply(this, arguments);
-        for (const string of strings) this.glue.free(string);
-        r = this.glue.returnPointerToView(r, this.returnPointerType);
-        return r;
-    }
-    
-    invokeExportedFunction() {
-        let r = this.apply(this, arguments);
-        if (r.array !== undefined) r = r.array.byteOffset;
-        return r;
-    }
-    
-    createClass(classnamePointer, classnameLen, sizeofClass) {
-        const glue = this, classname = glue.toString(classnamePointer, classnameLen);
-        const WASM = class {
+
+    #createClass(/**@type {number}*/classnamePointer, /**@type {number}*/classnameLen, /**@type {number}*/sizeofClass) {
+        const classname = this.toString(classnamePointer, classnameLen), glue = this, O = class {
+            /**@type {string} */className = classname;
+            /**@type {number} */pointerToInstance;
+
             constructor() {
-                const meta = Object.getPrototypeOf(this).constructor.__meta__;
-                if (!meta.hasConstructor) throw meta.name + ' has no constructor';
-    
-                this.__class__ = meta.name;
-                this.__prev__ = glue.__lastObject__;
-                if (glue.__lastObject__ != null) glue.__lastObject__.__next__ = this;
-                this.__next__ = null;
-                this.__glue__ = glue;
-                glue.__lastObject__ = this;
-    
-                const args = [].slice.call(arguments);
-                args.unshift(glue.malloc(meta.size));
-                this.__pointer__ = glue[meta.name + '::' + meta.name].apply(null, args);
-    
+                const constructorFunction = glue[classname + '::' + classname], args = [].slice.call(arguments);
+                if (constructorFunction == undefined) throw classname + ' has no constructor'; else args.unshift(glue.malloc(sizeofClass)); 
+                this.pointerToInstance = constructorFunction.apply(null, args);
+                const meta = Object.getPrototypeOf(this).constructor.classInfo;
                 for (const property of meta.properties) glue.createPropertyFromDescriptor(this, property);
-                for (const method of meta.methods) this[method.name] = glue.invokeMethod.bind(this, { function: glue[method.wasmFunction], returnPointerType: method.returnPointerType });
+                for (const method of meta.methods) this[method.name] = glue.#invokeFunction.bind(glue, this.pointerToInstance, method.function, method.returnPointerType);
             }
+
             destruct() {
-                const meta = Object.getPrototypeOf(this).constructor.__meta__;
-                if (meta.hasDestructor) glue[meta.name + '::~' + meta.name](this.__pointer__);
-                glue.free(this.__pointer__);
-                if (this.__prev__ != null) this.__prev__.__next__ = this.__next__;
-                if (this.__next__ != null) this.__next__.__prev__ = this.__prev__;
+                glue[classname + '::~' + classname]?.(this.pointerToInstance);
+                glue.free(this.pointerToInstance);
                 Object.getOwnPropertyNames(this).forEach((property) => delete this[property] );
                 Object.setPrototypeOf(this, null);
             }
         }
-        glue.__classUnderConstruction__ = glue.__classes__[classname] = glue[classname] = WASM;
-        glue.__classUnderConstruction__.__meta__ = {
-            name: classname,
-            size: sizeofClass,
-            hasConstructor: false,
-            hasDestructor: false,
-            properties: [],
-            methods: [],
-            staticProperties: []
+        O.classInfo = { name: classname, properties: [], methods: [] }
+        this.#classUnderConstruction = this[classname] = O;
+        this.#functionsWithNamespace.delete(classname);
+    }
+    
+    /**@returns {number|bigint|undefined} */
+    #read(/**@type {number} */pointer, /**@type {number} */type) {
+        switch (type) {
+            case 1: return this.#view.getUint8(pointer);
+            case 2: return this.#view.getInt8(pointer);
+            case 3: return this.#view.getUint16(pointer, this.#littleEndian);
+            case 4: return this.#view.getInt16(pointer, this.#littleEndian);
+            case 5: return this.#view.getUint32(pointer, this.#littleEndian);
+            case 6: return this.#view.getInt32(pointer, this.#littleEndian);
+            case 7: return this.#view.getBigUint64(pointer, this.#littleEndian);
+            case 8: return this.#view.getBigInt64(pointer, this.#littleEndian);
+            case 9: return this.#view.getFloat32(pointer, this.#littleEndian);
+            case 10: return this.#view.getFloat64(pointer, this.#littleEndian);
         }
-        delete glue.__functionsWithNamespace__[classname];
+        return undefined;
     }
-    
-    createConstructor() {
-        this.__classUnderConstruction__.__meta__.hasConstructor = true;
+
+    #write(/**@type {number} */pointer, /**@type {number} */type, /**@type {number|bigint} */value) {
+        switch (type) {
+            case 1: this.#view.setUint8(pointer, /**@type {number}*/(value)); break;
+            case 2: this.#view.setInt8(pointer, /**@type {number}*/(value)); break;
+            case 3: this.#view.setUint16(pointer, /**@type {number}*/(value), this.#littleEndian); break;
+            case 4: this.#view.setInt16(pointer, /**@type {number}*/(value), this.#littleEndian); break;
+            case 5: this.#view.setUint32(pointer, /**@type {number}*/(value), this.#littleEndian); break;
+            case 6: this.#view.setInt32(pointer, /**@type {number}*/(value), this.#littleEndian); break;
+            case 7: this.#view.setBigUint64(pointer, /**@type {bigint}*/(value), this.#littleEndian); break;
+            case 8: this.#view.setBigInt64(pointer, /**@type {bigint}*/(value), this.#littleEndian); break;
+            case 9: this.#view.setFloat32(pointer, /**@type {number}*/(value), this.#littleEndian); break;
+            case 10: this.#view.setFloat64(pointer, /**@type {number}*/(value), this.#littleEndian); break;
+        }
     }
-    
-    createDestructor() {
-        this.__classUnderConstruction__.__meta__.hasDestructor = this.__classUnderConstruction__.__meta__.hasConstructor;
+        
+    #createProperty(/**@type {number}*/propertynamePointer, /**@type {number}*/propertynameLen, /**@type {number}*/offset, /**@type {number}*/viewType, /**@type {number}*/viewLength) {
+        this.#classUnderConstruction.classInfo.properties.push({ name: this.toString(propertynamePointer, propertynameLen), offset: offset, viewType: viewType,  viewLength: viewLength });
     }
-    
-    createClassConstant(nameptr, namelen, value) {
-        this.__classUnderConstruction__[this.toString(nameptr, namelen)] = value;
-    }
-    
-    createConstant(nameptr, namelen, value) {
-        this[this.toString(nameptr, namelen)] = value;
-    }
-    
-    createPropertyFromDescriptor(object, descriptor) {
-        const buffer = this.createViewFromType(descriptor.viewType, object.__pointer__ + descriptor.offset, descriptor.viewLength);
-        if (descriptor.viewLength > 1) Object.defineProperty(object, descriptor.name, {
-            get: function() { return buffer.array; },
-            set: function(value) { buffer.array[index] = value; },
-            configurable: true,
-            enumerable: true
-        }); else Object.defineProperty(object, descriptor.name, {
-            get: function() { return buffer.array[0]; },
-            set: function(value) { buffer.array[0] = value; },
-            configurable: true,
-            enumerable: true
-        });
-    }
-    
-    createProperty(propertynamePointer, propertynameLen, offset, viewType, viewLength) {
-        this.__classUnderConstruction__.__meta__.properties.push({
-            name: this.toString(propertynamePointer, propertynameLen),
-            offset: offset,
-            viewType: viewType, 
-            viewLength: viewLength 
-        });
-    }
-    
-    createStaticPropertyFromDescriptor(wasmClass, descriptor) {
-        const buffer = this.createViewFromType(descriptor.viewType, descriptor.pointer, descriptor.viewLength);
-        if (descriptor.viewLength > 1) Object.defineProperty(wasmClass, descriptor.name, {
-            get: function() { return buffer.array; },
-            set: function(value) { buffer.array[index] = value; },
-            configurable: true,
-            enumerable: true
-        }); else Object.defineProperty(wasmClass, descriptor.name, {
-            get: function() { return buffer.array[0]; },
-            set: function(value) { buffer.array[0] = value; },
+
+    createPropertyFromDescriptor(/**@type {object}*/object, /**@type {object}*/descriptor) {
+        const basePointer = object?.pointerToInstance ?? 0;
+        if (descriptor.viewLength > 1) {
+            const buffer = new LinearMemoryBuffer(basePointer + descriptor.offset, descriptor.viewLength, descriptor.viewType, this);
+            Object.defineProperty(object, descriptor.name, {
+                get: function() { return buffer.array; },
+                configurable: true,
+                enumerable: true
+            }); 
+        } else Object.defineProperty(object, descriptor.name, {
+            get: () => { return this.#read(basePointer + descriptor.offset, descriptor.viewType); },
+            set: (value) => { this.#write(basePointer + descriptor.offset, descriptor.viewType, value); },
             configurable: true,
             enumerable: true
         });
     }
-    
-    createStaticProperty(propertynamePointer, propertynameLen, pointer, viewType, viewLength) {
-        const descriptor = { 
-            name: this.toString(propertynamePointer, propertynameLen), 
-            pointer: pointer,
-            viewType: viewType,
-            viewLength: viewLength
-        };
-        this.__classUnderConstruction__.__meta__.staticProperties.push(descriptor);
-        this.createStaticPropertyFromDescriptor(this.__classUnderConstruction__, descriptor);
+
+    #createStaticProperty(/**@type {number}*/propertynamePointer, /**@type {number}*/propertynameLen, /**@type {number}*/pointer, /**@type {number}*/viewType, /**@type {number}*/viewLength) {
+        this.createPropertyFromDescriptor(this.#classUnderConstruction, { name: this.toString(propertynamePointer, propertynameLen), offset: pointer, viewType: viewType, viewLength: viewLength });
     }
-    
-    createMethod(methodnamePointer, methodnameLen, returnPointerType) {
+
+    #createMethod(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
         const methodname = this.toString(methodnamePointer, methodnameLen);
-        this.__classUnderConstruction__.__meta__.methods.push({ 
-            name: methodname,
-            wasmFunction: this.__classUnderConstruction__.__meta__.name + '::' + methodname,
-            returnPointerType: returnPointerType
-        });
+        this.#classUnderConstruction.classInfo.methods.push({ name: methodname, function: this[this.#classUnderConstruction.classInfo.name + '::' + methodname], returnPointerType: returnPointerType });
     }
-    
-    createStaticMethod(methodnamePointer, methodnameLen, returnPointerType) {
-        const methodname = this.toString(methodnamePointer, methodnameLen), wasmMethodname = this.__classUnderConstruction__.__meta__.name + '::' + methodname;
-        this[wasmMethodname].returnPointerType = returnPointerType;
-        this[wasmMethodname].glue = this;
-        this.__classUnderConstruction__[methodname] = this.invokeFunction.bind(this[wasmMethodname]);
+
+    #createStaticMethod(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
+        const methodname = this.toString(methodnamePointer, methodnameLen), wasmMethodname = this.#classUnderConstruction.classInfo.name + '::' + methodname;
+        this.#classUnderConstruction[methodname] = this.#invokeFunction.bind(this, 0, this[wasmMethodname], returnPointerType);
     }
-    
-    createFunction(methodnamePointer, methodnameLen, returnPointerType) {
+
+    #createFunction(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
         const methodname = this.toString(methodnamePointer, methodnameLen);
         if (!this[methodname]) { // maybe this function is in a namespace
-            for (const namespace in this.__functionsWithNamespace__) {
-                if (this.__functionsWithNamespace__[namespace][methodname]) {
-                    this[methodname] = this.__functionsWithNamespace__[namespace][methodname];
-                    delete this.__functionsWithNamespace__[namespace][methodname];
+            for (const [namespace, map] of this.#functionsWithNamespace) {
+                const method = map.get(methodname);
+                if (method != undefined) {
+                    this[methodname] = method;
+                    map.delete(methodname);
                     break;
                 }
             }
             if (!this[methodname]) return;
         }
-        this[methodname].returnPointerType = returnPointerType;
-        this[methodname].glue = this;
-        this[methodname] = this.invokeFunction.bind(this[methodname]);
-    }
-    
-    exportToWasm(functionName, f) {
-        this.__exportsToWasm__[functionName] = this.invokeExportedFunction.bind(f);
-    }
-    
-    onMemoryGrowth(n) {
-        this.linearMemory = this.wasmInstance.exports.memory.buffer;
-        if (this.__memorygrowview__.buffer.byteLength < 1) this.updateMemoryViews();
-        this.logMemory();
-    }
-    
-    consolelog(pointer, strlen) {
-        console.log(this.toString(pointer, strlen));
-    }
-    
-    setInstance(wasmInstance) {
-        this.wasmInstance = wasmInstance;
-        this.wasmInstance.exports._initialize();
-    
-        this.__functions__ = this.wasmInstance.exports;
-        this.linearMemory = this.wasmInstance.exports.memory.buffer;
-        this.__memorygrowpointer__ = this.__functions__.__malloc__(16);
-        this.__memorygrowview__ = new Uint8Array(this.linearMemory, this.__memorygrowpointer__, 16);
-        this.__functionsWithNamespace__ = {};
-    
-        const outputBuffer = this.__functions__.__malloc__(1024), stringview = new Uint8Array(this.linearMemory, this.__functions__.__malloc__(1024), 1024);
-        for (const f in this.__functions__) if (f != '__demangle__') {
-            const length = this.__functions__.__demangle__(this.toWASMString(f, stringview), outputBuffer);
-            if (length > 0) {
-                let name = this.toString(outputBuffer, length);
-                const par = name.indexOf('(');
-                if (par > 0) name = name.substring(0, par);
-
-                let namespace = name.lastIndexOf('::');
-                if (namespace > 0) {
-                    namespace = name.lastIndexOf('::', namespace - 1);
-                    if (namespace > 0) name = name.substr(namespace + 2);
-                }
-
-                // class members have namespaces removed from this point, but functions not
-                const split = name.split('::', 2);
-                if (split.length == 2) {
-                    if (!this.__functionsWithNamespace__[split[0]]) this.__functionsWithNamespace__[split[0]] = {};
-                    this.__functionsWithNamespace__[split[0]][split[1]] = this.__functions__[f];
-                }
-
-                this[name] = this.__functions__[f];
-            } else this[f] = this.__functions__[f];
-        }
-        this.free(outputBuffer);
-        this.free(stringview.byteOffset);
-    
-        this.__functions__.__initialize__();
-        delete this.__functionsWithNamespace__;
-        this.logMemory();
-        this.__classUnderConstruction__ = null;
-    }
-    
-    async loadFromArrayBuffer(wasmCode, afterWASMLoaded = null) {
-        this.wasmCode = wasmCode;
-        await WebAssembly.instantiate(wasmCode, {
-            wasi_snapshot_preview1: this.wasi,
-            env: this.__exportsToWasm__,
-        }).then((_module) => {
-            this.setInstance(_module.instance);
-            if (afterWASMLoaded != null) afterWASMLoaded.afterWASMLoaded();
-        });
+        this[methodname] = this.#invokeFunction.bind(this, 0, this[methodname], returnPointerType);
     }
 
-    async loadFromModule(module) {
-        await WebAssembly.instantiate(module, {
-            wasi_snapshot_preview1: this.wasi,
-            env: this.__exportsToWasm__,
-        }).then((instance) => {
-            this.setInstance(instance);
-        });
-    }
-
-    async loadFromURL(url, storeCode = true) {
-        if (WebAssembly.instantiateStreaming) {
-            await WebAssembly.instantiateStreaming(fetch(url), {
-                wasi_snapshot_preview1: this.wasi,
-                env: this.__exportsToWasm__,
-            }).then((_module) => {
-                this.setInstance(_module.instance);
-            });
-            if (storeCode) {
-                const wasmResponse = await fetch(url);
-                this.wasmCode = await wasmResponse.arrayBuffer();
-            }
-        }
-        else {
-            const response = await fetch(url);
-            const wasmCode = await response.arrayBuffer();
-            if (storeCode) {
-                this.wasmCode = wasmCode;
-            }
-            await WebAssembly.instantiate(wasmCode, {
-                wasi_snapshot_preview1: this.wasi,
-                env: this.__exportsToWasm__,
-            }).then((_module) => {
-                this.setInstance(_module.instance);
-            });
+    exportToWasm(/**@type {string}*/functionName, /**@type {Function}*/f) { 
+        this.#exportsToWASM[functionName] = () => {
+            const r = f.apply(f, arguments);
+            return (r.array != undefined) ? r.array.byteOffset : r;
         }
     }
-
-    toString(pointer, strlen = 0) {
+    
+    #onMemoryGrowth(/**@type {number}*/n) {
+        this.linearMemory = this.#wasmInstance.exports.memory['buffer'];
+        this.#view = new DataView(this.linearMemory);
+        if (this.#memoryGrowArray.buffer.byteLength < 1) this.#updateMemoryViews();
+        this.#logMemory();
+    }
+    
+    toString(/**@type {number}*/pointer, /**@type {number}*/strlen = 0) {
         let view = null;
         if (strlen < 1) {
             const viewLength = Math.min(16384, this.linearMemory.byteLength - pointer);
@@ -420,11 +358,10 @@ class SuperpoweredGlue {
             for (strlen = 0; strlen < viewLength; strlen++) if (view[strlen] == 0) break;
         } else view = new Uint8Array(this.linearMemory, pointer, strlen);
     
-        let str = '', i = 0, bytesNeeded, codePoint;
+        let str = '', i = 0, bytesNeeded, codePoint, octet;
         while (i < strlen) {
-            const octet = view[i];
-            bytesNeeded = codePoint = 0;
-    
+            octet = view[i];
+            
             if (octet <= 0x7f) {
                 bytesNeeded = 0;
                 codePoint = octet & 0xff;
@@ -437,7 +374,7 @@ class SuperpoweredGlue {
             } else if (octet <= 0xf4) {
                 bytesNeeded = 3;
                 codePoint = octet & 0x07;
-            }
+            } else bytesNeeded = codePoint = 0;
     
             if (strlen - i - bytesNeeded > 0) {
                 for (let k = 0; k < bytesNeeded; k++) codePoint = (codePoint << 6) | (view[i + k + 1] & 0x3f);
@@ -452,16 +389,12 @@ class SuperpoweredGlue {
         return str;
     }
     
-    toWASMString(str, view = null) {
+    toWASMString(/**@type {string} */str, /**@type {Uint8Array|undefined}*/view) {
         const length = str.length, maxBytes = length * 4 + 1;
-        let i = 0, c, bits, destination = 0;
-        if (view == null) {
-            const pointer = this.malloc(maxBytes);
-            view = new Uint8Array(this.linearMemory, pointer, maxBytes);
-        }
+        let i = 0, c, bits, destination = 0, codePoint;
+        if (view == undefined) view = new Uint8Array(this.linearMemory, this.malloc(maxBytes), maxBytes);
         while (i < length) {
-            const codePoint = str.codePointAt(i);
-            c = bits = 0;
+            codePoint = str.codePointAt(i) ?? 0;
     
             if (codePoint <= 0x0000007f) {
                 c = 0;
@@ -475,7 +408,7 @@ class SuperpoweredGlue {
             } else if (codePoint <= 0x001fffff) {
                 c = 18;
                 bits = 0xf0;
-            }
+            } else c = bits = 0;
     
             view[destination++] = bits | (codePoint >> c);
             c -= 6;
@@ -489,31 +422,54 @@ class SuperpoweredGlue {
         view[destination] = 0;
         return view.byteOffset;
     }
-    
-    logMemory() {
-        console.log('WASM memory ' + this.id + ': ' + this.niceSize(this.__functions__.__stacksize__()) + ' stack, ' + this.niceSize(this.linearMemory.byteLength - this.__functions__.__heapbase__()) + ' heap, ' + this.niceSize(this.linearMemory.byteLength) + ' total.');
+
+    /**@returns {string} */
+    #niceSize(/**@type {number}*/bytes) {
+        if (bytes == 0) return '0 byte'; else if (bytes == 1) return '1 byte';
+        const postfix = [ ' bytes', ' kb', ' mb', ' gb', ' tb' ], n = Math.floor(Math.log(bytes) / Math.log(1024));
+        return Math.round(bytes / Math.pow(1024, n)) + postfix[n];
     }
     
-    malloc(bytes) {
-        const pointer = this.__functions__.__malloc__(bytes);
-        if (this.__memorygrowview__.buffer.byteLength < 1) this.updateMemoryViews();
+    #logMemory() {
+        if (this.logMemory) console.log('WASM memory ' + this.id + ': ' + this.#niceSize(this.#stackSize()) + ' stack, ' + this.#niceSize(this.linearMemory.byteLength - this.#heapBase()) + ' heap, ' + this.#niceSize(this.linearMemory.byteLength) + ' total.');
+    }
+    
+    malloc(/**@type {number}*/bytes) {
+        const pointer = this.#malloc(bytes);
+        if (this.#memoryGrowArray.buffer.byteLength < 1) this.#updateMemoryViews();
         return pointer;
     }
     
-    updateMemoryViews() {
-        for (const buffer of this.__views__) this.updateBuffer(buffer, this.linearMemory);
-        this.__memorygrowview__ = new Uint8Array(this.linearMemory, this.__memorygrowpointer__, 16);
+    #updateMemoryViews() {
+        for (const [pointer, set] of this.#buffers) for (const buffer of set) buffer.update();
+        this.#memoryGrowArray = new Uint8Array(this.linearMemory, this.#memoryGrowPointer, 16);
+    }
+
+    addBuffer(/**@type {LinearMemoryBuffer} */buffer) {
+        const existing = this.#buffers.get(buffer.pointer);
+        if (existing) existing.add(buffer); else this.#buffers.set(buffer.pointer, new Set([ buffer ]));
+    }
+
+    removeBuffer(/**@type {LinearMemoryBuffer} */buffer) {
+        const set = this.#buffers.get(buffer.pointer);
+        if (!set) return; else set.delete(buffer);
+        if (set.size < 1) this.#buffers.delete(buffer.pointer);
     }
     
-    free(pointer) {
-        this.__functions__.__free__(pointer);
+    free(/**@type {number}*/pointer) {
+        const set = this.#buffers.get(pointer);
+        if (set) {
+            set.clear();
+            this.#buffers.delete(pointer);
+        }
+        this.#free(pointer);
     }
     
-    setInt64(pointer, index, value) {
-        this.__functions__.__setint64__(pointer, index, value);
+    setInt64(/**@type {number}*/pointer, /**@type {number}*/index, /**@type {number}*/value) {
+        this.#setInt64(pointer, index, value);
     }
     
-    bufferToWASM(buffer, input, index) {
+    bufferToWASM(/**@type {any}*/buffer, /**@type {any}*/input, /**@type {number}*/index) {
         let inBufferL = null, inBufferR = null;
         if (index === undefined) index = 0;
         if (typeof input.getChannelData === 'function') {
@@ -530,7 +486,7 @@ class SuperpoweredGlue {
         }
     }
     
-    bufferToJS(buffer, output, index) {
+    bufferToJS(/**@type {any}*/buffer, /**@type {any}*/output, /**@type {number}*/index) {
         let outBufferL = null, outBufferR = null;
         if (index === undefined) index = 0;
         if (typeof output.getChannelData === 'function') {
@@ -547,241 +503,184 @@ class SuperpoweredGlue {
         }
     }
     
-    arrayBufferToWASM(arrayBuffer, offset = 0) {
+    arrayBufferToWASM(/**@type {ArrayBuffer}*/arrayBuffer, /**@type {number}*/offset = 0) {
         const pointer = this.malloc(arrayBuffer.byteLength + offset);
         new Uint8Array(this.linearMemory).set(new Uint8Array(arrayBuffer, 0, arrayBuffer.byteLength), pointer + offset);
         return pointer;
     }
     
-    copyWASMToArrayBuffer(pointer, lengthBytes) {
+    copyWASMToArrayBuffer(/**@type {number}*/pointer, /**@type {number}*/lengthBytes) {
         const arrayBuffer = new ArrayBuffer(lengthBytes);
         new Uint8Array(arrayBuffer, 0, lengthBytes).set(new Uint8Array(this.linearMemory, pointer, lengthBytes));
         return arrayBuffer;
     }
     
-    moveWASMToArrayBuffer(pointer, lengthBytes) {
+    moveWASMToArrayBuffer(/**@type {number}*/pointer, /**@type {number}*/lengthBytes) {
         const arrayBuffer = this.copyWASMToArrayBuffer(pointer, lengthBytes);
         this.free(pointer);
         return arrayBuffer;
     }
     
-    static async loaderWorkerMain(url) {
-        SuperpoweredGlue.__uint_max__sp__ = 255;
+    static async loaderWorkerMain(/**@type {string}*/url) {
+        SuperpoweredGlue['__uint_max__sp__'] = 255;
         const Superpowered = await SuperpoweredGlue.Instantiate('');
-    
-        await fetch(url).then(response =>
-            response.arrayBuffer()
-        ).then(audiofileArrayBuffer => {
-            // Copy the ArrayBuffer to WebAssembly Linear Memory.
+        await fetch(url).then(response => response.arrayBuffer()).then(audiofileArrayBuffer => {
             const audiofileInWASMHeap = Superpowered.arrayBufferToWASM(audiofileArrayBuffer);
-    
-            // Decode the entire file into the Audio In Memory format.
-            const audioInMemoryFormat = Superpowered.Decoder.decodeToAudioInMemory(audiofileInWASMHeap, audiofileArrayBuffer.byteLength);
-    
-            // Copy from the WebAssembly heap into a regular ArrayBuffer that can be transfered.
+            const audioInMemoryFormat = Superpowered['Decoder'].decodeToAudioInMemory(audiofileInWASMHeap, audiofileArrayBuffer.byteLength);
             // Size calculation:  48 bytes (main table is six 64-bit numbers), plus number of audio frames (.getSize) multiplied by four (16-bit stereo is 4 bytes).
-            const arrayBuffer = Superpowered.moveWASMToArrayBuffer(audioInMemoryFormat, 48 + Superpowered.AudioInMemory.getSize(audioInMemoryFormat) * 4);
-    
-            // Transfer the ArrayBuffer.
-            if (typeof self.transfer !== 'undefined') self.transfer(url, arrayBuffer);
-            else postMessage({ '__transfer__': arrayBuffer, }, [ arrayBuffer ]);
+            const arrayBuffer = Superpowered.moveWASMToArrayBuffer(audioInMemoryFormat, 48 + Superpowered['AudioInMemory'].getSize(audioInMemoryFormat) * 4);
+            postMessage({ '__transfer__': arrayBuffer, }, [ arrayBuffer ]);
         });
     }
     
-    static loaderWorkerOnmessage(message) {
+    static loaderWorkerOnmessage(/**@type {MessageEvent}*/message) {
         if (typeof message.data.load === 'string') SuperpoweredGlue.loaderWorkerMain(message.data.load);
     }
     
-    registerTrackLoader(receiver) {
+    /**@returns {number} */
+    registerTrackLoader(/**@type {object}*/receiver) {
         if (typeof receiver.terminate !== 'undefined') receiver.addEventListener('message', this.handleTrackLoaderMessage); // Worker
-        return this.trackLoaderReceivers.push((typeof receiver.port !== 'undefined') ? receiver.port : receiver) - 1;
+        this.#trackLoaderReceivers.set(this.#nextTrackLoaderReceiverID++, (typeof receiver.port !== 'undefined') ? receiver.port : receiver);
+        return this.#nextTrackLoaderReceiverID - 1;
     }
+
+    removeTrackLoader(/**@type {number} */trackLoaderID) { this.#trackLoaderReceivers.delete(trackLoaderID); }
+    /**@returns {number} */nextTrackLoaderID() { return this.#nextTrackLoaderReceiverID; }
     
-    handleTrackLoaderMessage(message) {
+    handleTrackLoaderMessage(/**@type {MessageEvent}*/message) {
         if (typeof message.data.SuperpoweredLoad !== 'string') return false;
         this.loadTrackInWorker(message.data.SuperpoweredLoad, message.data.trackLoaderID);
         return true;
     }
     
-    async loadTrackInWorker(url, trackLoaderID) {
-        let source = SuperpoweredGlue.toString();
-    
-        const trackLoaderWorker = new Worker(URL.createObjectURL(new Blob([ source + "\r\n\r\nonmessage = SuperpoweredGlue.loaderWorkerOnmessage;" + `\r\n\r\nSuperpoweredGlue.wasmCDNUrl = "${SuperpoweredGlue.wasmCDNUrl}";` ], { type: 'application/javascript' })));
-        trackLoaderWorker.__url__ = url;
-        trackLoaderWorker.trackLoaderID = trackLoaderID;
-    
-        trackLoaderWorker.ontransfer = function(message) { 
-            this.transferLoadedTrack(message.transfer, trackLoaderWorker);
-        }.bind(this);
-    
-        trackLoaderWorker.onmessage = function(message) { 
-            this.transferLoadedTrack(message.data.__transfer__, trackLoaderWorker);
-        }.bind(this);
-    
+    async loadTrackInWorker(/**@type {string}*/url, /**@type {number}*/trackLoaderID) {   
+        if (this.#trackLoaderSource == undefined) this.#trackLoaderSource = URL.createObjectURL(new Blob([ SuperpoweredGlue.toString() + "\r\n\r\nonmessage = SuperpoweredGlue.loaderWorkerOnmessage;" + `\r\n\r\nSuperpoweredGlue.wasmCDNUrl = "${SuperpoweredGlue.wasmCDNUrl}";` ], { type: 'application/javascript' }));
+        const trackLoaderWorker = new Worker(this.#trackLoaderSource);
+        trackLoaderWorker['__url__'] = url;
+        trackLoaderWorker['trackLoaderID'] = trackLoaderID;    
+        trackLoaderWorker.onmessage = (/**@type {MessageEvent}*/message) => this.transferLoadedTrack(message.data.__transfer__, trackLoaderWorker);
         if ((typeof window !== 'undefined') && (typeof window.location !== 'undefined') && (typeof window.location.origin !== 'undefined')) url = new URL(url, window.location.origin).toString();
         trackLoaderWorker.postMessage({ load: url });
     }
     
-    transferLoadedTrack(arrayBuffer, trackLoaderWorker) {
-        const receiver = this.trackLoaderReceivers[trackLoaderWorker.trackLoaderID]; 
-        if (receiver == null) return;
-        if (typeof receiver.postMessage === 'function') receiver.postMessage({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker.__url__ }}, [ arrayBuffer ]);
-        else receiver({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker.__url__ }});
+    transferLoadedTrack(/**@type {ArrayBuffer}*/arrayBuffer,/**@type {Worker} */trackLoaderWorker) {
+        const receiver = this.#trackLoaderReceivers.get(trackLoaderWorker['trackLoaderID']); 
+        if (receiver == undefined) return;
+        if (typeof receiver.postMessage === 'function') receiver.postMessage({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker['__url__'] }}, [ arrayBuffer ]);
+        else receiver({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker['__url__'] }});
         trackLoaderWorker.terminate();
     }
     
-    downloadAndDecode(url, obj) {
+    downloadAndDecode(/**@type {string}*/url, /**@type {object}*/obj) {
         if (obj.trackLoaderID === undefined) return;
         if ((typeof obj.onMessageFromMainScope === 'function') && (typeof obj.sendMessageToMainScope === 'function')) obj.sendMessageToMainScope({ SuperpoweredLoad: url, trackLoaderID: obj.trackLoaderID });
         else this.loadTrackInWorker(url, obj.trackLoaderID);
     }
 }
 
-class SuperpoweredWebAudio {
-    static AudioWorkletHasBrokenModuleImplementation = false;
+//@ts-check
 
-    constructor(minimumSamplerate, superpowered) {
-        //SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation = (navigator.userAgent.indexOf('AppleWebKit') > -1) || (navigator.userAgent.indexOf('Firefox') > -1);
-        //SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation = (navigator.userAgent.indexOf('Firefox') > -1);
-        //if (SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation && (navigator.userAgent.indexOf('Chrome') > -1)) SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation = false;
+class SuperpoweredWebAudio {
+    /**@type {object} */Superpowered;
+    /**@type {AudioContext} */audioContext;
+
+    constructor(/**@type {number}*/minimumSamplerate, /**@type {object}*/superpowered) {
         this.Superpowered = superpowered;
-        this.audioContext = null;
-        const AudioContext = window.AudioContext || window.webkitAudioContext || false;
-        let c = new AudioContext();
-        if (c.sampleRate < minimumSamplerate) {
-            c.close();
-            c = new AudioContext({ sampleRate: minimumSamplerate });
+        this.audioContext = new AudioContext();
+        if (this.audioContext.sampleRate < minimumSamplerate) {
+            this.audioContext.close();
+            this.audioContext = new AudioContext({ sampleRate: minimumSamplerate });
         }
-        this.audioContext = c;
     }
 
-    getUserMediaForAudio(constraints, onPermissionGranted, onPermissionDenied) {
-        let finalConstraints = {};
-
+    getUserMediaForAudio(/**@type {object}*/constraints, /**@type {(stream:MediaStream)=>void}*/onPermissionGranted, /**@type {(reason:any)=>void}*/onPermissionDenied) {
+        const finalConstraints = {};
         if (navigator.mediaDevices) {
             const supportedConstraints = navigator.mediaDevices.getSupportedConstraints();
-            for (const constraint in supportedConstraints) if (supportedConstraints.hasOwnProperty(constraint) && (constraints[constraint] !== undefined)) finalConstraints[constraint] = constraints[constraint];
+            for (const constraint in supportedConstraints) if (constraints[constraint] !== undefined) finalConstraints[constraint] = constraints[constraint];
         }
-
         finalConstraints.audio = true;
         finalConstraints.video = false;
-
-        navigator.fastAndTransparentAudio = constraints.hasOwnProperty('fastAndTransparentAudio') && (constraints.fastAndTransparentAudio === true);
-        if (navigator.fastAndTransparentAudio) {
+        if (constraints.fastAndTransparentAudio === true) {
             finalConstraints.echoCancellation = false;
             finalConstraints.disableLocalEcho = false;
             finalConstraints.autoGainControl = false;
             finalConstraints.audio = { mandatory: { googAutoGainControl: false, googAutoGainControl2: false, googEchoCancellation: false, googNoiseSuppression: false, googHighpassFilter: false, googEchoCancellation2: false, googNoiseSuppression2: false, googDAEchoCancellation: false, googNoiseReduction: false } };
         };
-
-        navigator.getUserMediaMethod = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mediaDevices.mozGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
-        if (navigator.getUserMediaMethod) navigator.getUserMediaMethod(finalConstraints, onPermissionGranted, onPermissionDenied);
-        else {
-            let userMedia = null;
-            try {
-                userMedia = navigator.mediaDevices.getUserMedia;
-            } catch(error) {
-                if ((location.protocol.toLowerCase() != 'https') && (location.hostname.toLowerCase() != 'localhost')) onPermissionDenied("Web Audio requires a secure context (HTTPS or localhost).");
-                else onPermissionDenied(error);
-                userMedia = null;
-            }
-
-            if (userMedia != null) {
-                if (userMedia) navigator.mediaDevices.getUserMedia(finalConstraints).then(onPermissionGranted).catch(onPermissionDenied);
-                else onPermissionDenied("Can't access getUserMedia.");
-            }
+        try {
+            navigator.mediaDevices.getUserMedia(/**@type {MediaStreamConstraints}*/(finalConstraints)).then(onPermissionGranted).catch(onPermissionDenied);
+        } catch(error) {
+            onPermissionDenied((location.protocol.toLowerCase() != 'https') && (location.hostname.toLowerCase() != 'localhost') ? 'Web Audio requires a secure context (HTTPS or localhost).' : error);
         }
     }
 
-    async getUserMediaForAudioAsync(constraints) {
-        return new Promise((resolve, reject) => {
-            this.getUserMediaForAudio(constraints, function(stream) {
-                if (navigator.fastAndTransparentAudio) {
-                    const audioTracks = stream.getAudioTracks();
-                    for (const audioTrack of audioTracks) audioTrack.applyConstraints({ autoGainControl: false, echoCancellation: false, noiseSuppression: false });
-                }
-                resolve(stream);
-            }, reject);
-        });
+    /**@returns {Promise<MediaStream>} */
+    async getUserMediaForAudioAsync(/**@type {object}*/constraints) {
+        return new Promise((resolve, reject) => this.getUserMediaForAudio(constraints, (/**@type {MediaStream}*/stream) => {
+            if (constraints.fastAndTransparentAudio === true) {
+                const audioTracks = stream.getAudioTracks();
+                for (const audioTrack of audioTracks) audioTrack.applyConstraints({ autoGainControl: false, echoCancellation: false, noiseSuppression: false });
+            }
+            resolve(stream);
+        }, reject));
     }
 
-    async createAudioNodeAsync(url, className, onMessageFromAudioScope, numInputs, numOutputs) {
-        if (numInputs === undefined) numInputs = 1;
-        if (numOutputs === undefined) numOutputs = 1;
-        return new Promise((resolve, reject) => this.createAudioNode(url, className, resolve, onMessageFromAudioScope, numInputs, numOutputs) );
+    /**@returns {Promise<>} */
+    async createAudioNodeAsync(/**@type {string}*/url, /**@type {string}*/className, /**@type {Function}*/onMessageFromAudioScope, /**@type {number}*/numInputs = 1, /**@type {number}*/numOutputs = 1) {
+        return new Promise((resolve, reject) => this.createAudioNode(url, className, resolve, onMessageFromAudioScope, numInputs, numOutputs));
     }
 
-    createAudioNode(url, className, callback, onMessageFromAudioScope, numInputs, numOutputs) {
-        if (!SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation && (typeof AudioWorkletNode === 'function')) {
-            if (numInputs === undefined) numInputs = 1;
-            if (numOutputs === undefined) numOutputs = 1;
+    createAudioNode(/**@type {string}*/url, /**@type {string}*/className, /**@type {(node:AudioWorkletNode)=>void}*/callback, /**@type {Function}*/onMessageFromAudioScope, /**@type {number}*/numInputs = 1, /**@type {number}*/numOutputs = 1) {
+        if (typeof AudioWorkletNode !== 'function') return;
 
-            this.audioContext.audioWorklet.addModule(url).then(() => {
-                const node = new AudioWorkletNode(this.audioContext, className, {
-                    processorOptions: {
-                        wasmCode: this.Superpowered.wasmCode,
-                        samplerate: this.audioContext.sampleRate,
-                        maxChannels: this.Superpowered.__maxChannels__,
-                        numberOfInputs: numInputs,
-                        numberOfOutputs: numOutputs,
-                        trackLoaderID: this.Superpowered.trackLoaderReceivers.length
-                    },
+        this.audioContext.audioWorklet.addModule(url).then(() => {
+            const trackLoaderID = this.Superpowered.nextTrackLoaderID();
+            const node = new AudioWorkletNode(this.audioContext, className, {
+                processorOptions: {
+                    wasmCode: this.Superpowered.wasmCode,
+                    samplerate: this.audioContext.sampleRate,
+                    maxChannels: this.Superpowered.__maxChannels__,
                     numberOfInputs: numInputs,
                     numberOfOutputs: numOutputs,
-                    outputChannelCount: Array(numOutputs).fill(2)
-                });
-                node.superpoweredWASMUrl = SuperpoweredGlue.wasmCDNUrl;
-                node.trackLoaderID = this.Superpowered.registerTrackLoader(node);
-                node.Superpowered = this.Superpowered;
-                node.onReadyCallback = callback;
-                node.onMessageFromAudioScope = onMessageFromAudioScope;
-                node.destruct = function() {
-                    node.Superpowered.trackLoaderReceivers[node.trackLoaderID] = null;
-                    node.port.postMessage('___superpowered___destruct___');
-                }
-                node.sendMessageToAudioScope = function(message, transfer = []) { node.port.postMessage(message, transfer); }
-                node.port.onmessage = function(event) {
-                    if (node.Superpowered.handleTrackLoaderMessage(event)) return;
-                    if (event.data == '___superpowered___onready___') {
-                        node.state = 1;
-                        node.onReadyCallback(node);
-                    } else node.onMessageFromAudioScope(event.data);
-                }.bind(node);
+                    trackLoaderID: trackLoaderID
+                },
+                numberOfInputs: numInputs,
+                numberOfOutputs: numOutputs,
+                outputChannelCount: Array(numOutputs).fill(2)
             });
-        } else {
-            import(/* webpackIgnore: true */ /* viteIgnore: true */ url).then((processorModule) => {
-                const node = this.audioContext.createScriptProcessor(1024, 2, 2);
-                node.trackLoaderID = this.Superpowered.registerTrackLoader(node);
-                node.samplerate = this.audioContext.sampleRate;
-                node.inputBuffer = this.Superpowered.createFloatArray(1024 * 2);
-                node.outputBuffer = this.Superpowered.createFloatArray(1024 * 2);
-                node.processor = new processorModule.default(this.Superpowered, onMessageFromAudioScope, node.samplerate);
-                node.sendMessageToAudioScope = function(message, transfer = 0) { node.processor.onMessageFromMainScope(message); }
-                node.destruct = function() {
-                    node.processor.Superpowered.trackLoaderReceivers[node.trackLoaderID] = null;
-                    node.processor.state = -1;
-                    node.processor.onDestruct();
-                }
-                node.onaudioprocess = function(e) {
-                    node.processor.Superpowered.bufferToWASM(node.inputBuffer, e.inputBuffer);
-                    if (node.processor.state > 0) node.processor.processAudio(node.inputBuffer, node.outputBuffer, node.inputBuffer.array.length / 2);
-                    node.processor.Superpowered.bufferToJS(node.outputBuffer, e.outputBuffer);
-                };
-                node.processor.state = 1;
-                callback(node);
-            });
-        }
+            this.Superpowered.registerTrackLoader(node);
+            node['superpoweredWASMUrl'] = SuperpoweredGlue.wasmCDNUrl;
+            node['destruct'] = () => {
+                this.Superpowered.removeTrackLoader(trackLoaderID);
+                node.port.postMessage('___superpowered___destruct___');
+            }
+            node['sendMessageToAudioScope'] = (/**@type {any}*/message, /**@type {Transferable[]}*/transfer = []) => node.port.postMessage(message, transfer);
+            node.port.onmessage = (/**@type {MessageEvent} */event) => {
+                if (this.Superpowered.handleTrackLoaderMessage(event)) return;
+                if (event.data == '___superpowered___onready___') {
+                    node['state'] = 1;
+                    node['trackLoaderID'] = trackLoaderID;
+                    callback(node);
+                } else onMessageFromAudioScope(event.data);
+            }
+        });
     }
 }
 
-if (!SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation && (typeof AudioWorkletProcessor === 'function')) {
+//@ts-ignore
+if (typeof AudioWorkletProcessor === 'function') {
+    //@ts-ignore
     class SuperpoweredAudioWorkletProcessor extends AudioWorkletProcessor {
-        constructor(options) {
+        /**@type {object[]} */inputBuffers = [];
+        /**@type {object[]} */outputBuffers = [];
+
+        constructor(/**@type {object}*/options) {
             super();
-            SuperpoweredGlue.__uint_max__sp__ = options.processorOptions.maxChannels;
-            this.trackLoaderID = options.processorOptions.trackLoaderID;
+            SuperpoweredGlue['__uint_max__sp__'] = options.processorOptions.maxChannels;
+            this.trackLoaderID = options.processorOptions.trackLoaderID; 
             this.state = 0;
-            this.port.onmessage = (event) => {
+            //@ts-ignore
+            this.port.onmessage = (/**@type {MessageEvent}*/event) => {
                 if (event.data == '___superpowered___destruct___') {
                     this.state = -1;
                     this.onDestruct();
@@ -794,34 +693,27 @@ if (!SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation && (typeof A
             this.numberOfOutputs = options.processorOptions.numberOfOutputs;
         }
         afterWASMLoaded() {
-            // Add the user's WASM URL to the SuperpoweredGlue class
-            if (this.superpoweredWASMUrl) {
-                SuperpoweredGlue.wasmCDNUrl = this.superpoweredWASMUrl;
-            }
-
-            this.Superpowered.Initialize();
-
-            this.inputBuffers = [];
-            for (let n = this.numberOfInputs; n > 0; n--) this.inputBuffers.push(this.Superpowered.createFloatArray(128 * 2));
-
-            this.outputBuffers = [];
-            for (let n = this.numberOfOutputs; n > 0; n--) this.outputBuffers.push(this.Superpowered.createFloatArray(128 * 2));
-
+            SuperpoweredGlue.wasmCDNUrl = this['superpoweredWASMUrl'] ?? undefined;
+            this.Superpowered['Initialize']();
+            for (let n = this.numberOfInputs; n > 0; n--) this.inputBuffers.push(new this.Superpowered.Float32Buffer(128 * 2));
+            for (let n = this.numberOfOutputs; n > 0; n--) this.outputBuffers.push(new this.Superpowered.Float32Buffer(128 * 2));
             this.onReady();
+            //@ts-ignore
             this.port.postMessage('___superpowered___onready___');
             this.state = 1;
         }
         onReady() {}
         onDestruct() {}
-        onMessageFromMainScope(message) {}
-        sendMessageToMainScope(message) { this.port.postMessage(message); }
-        processAudio(buffer, parameters) {}
-        process(inputs, outputs, parameters) {
+        onMessageFromMainScope(/**@type {any}*/message) {}
+        //@ts-ignore
+        sendMessageToMainScope(/**@type {any}*/message) { this.port.postMessage(message); }
+        processAudio(/** @type {object|object[]} */input, /** @type {object|object[]} */output, /**@type {number} */numFrames, /**@type {Object<string,Float32Array>} */parameters) {}
+        process(/**@type {Float32Array[][]} */inputs, /**@type {Float32Array[][]} */outputs, /**@type {Object<string,Float32Array>} */parameters) {
             if (this.state < 0) return false;
             if (this.state == 1) {
                 for (let n = this.numberOfInputs - 1; n >= 0; n--) {
                     if (inputs[n].length > 1) this.Superpowered.bufferToWASM(this.inputBuffers, inputs, n);
-                    else this.Superpowered.memorySet(this.inputBuffers[n].pointer, 0, 128 * 8);
+                    else this.Superpowered['memorySet'](this.inputBuffers[n].pointer, 0, 128 * 8);
                 }
                 this.processAudio(
                     (this.numberOfInputs == 1) ? this.inputBuffers[0] : this.inputBuffers, 
@@ -837,33 +729,7 @@ if (!SuperpoweredWebAudio.AudioWorkletHasBrokenModuleImplementation && (typeof A
         }
     }
     SuperpoweredWebAudio.AudioWorkletProcessor = SuperpoweredAudioWorkletProcessor;
-} else {
-    class SuperpoweredAudioWorkletProcessor {
-        constructor(sp, oma, sr) {
-            this.Superpowered = sp;
-            this.samplerate = sr;
-            this.onMessageFromAudioScope = oma;
-            this.state = 0;
-            this.onReady();
-        }
-        onMessageFromAudioScope = null;
-        onReady() {}
-        onDestruct() {}
-        onMessageFromMainScope(message) {}
-        sendMessageToMainScope(message) { if (!this.Superpowered.handleTrackLoaderMessage({ data: message })) this.onMessageFromAudioScope(message); }
-        postMessage(message, transfer = []) { this.onMessageFromMainScope(message); }
-        processAudio(buffer, parameters) {}
-    }
-    SuperpoweredWebAudio.AudioWorkletProcessor = SuperpoweredAudioWorkletProcessor;
 }
 
-if (typeof exports === "object" && typeof module === "object")
-  module.exports = { SuperpoweredGlue, SuperpoweredWebAudio };
-else if (typeof exports === "object") {
-  exports["SuperpoweredGlue"] = SuperpoweredGlue;
-  exports["SuperpoweredWebAudio"] = SuperpoweredWebAudio;
-}
-if (typeof globalThis !== "undefined") {
-  globalThis.SuperpoweredGlue = SuperpoweredGlue;
-  globalThis.SuperpoweredWebAudio = SuperpoweredWebAudio;
-}
+
+export { SuperpoweredGlue, SuperpoweredWebAudio };
