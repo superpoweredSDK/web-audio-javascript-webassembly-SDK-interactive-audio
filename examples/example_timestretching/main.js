@@ -1,4 +1,4 @@
-import './Superpowered.js';
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './Superpowered.js';
 
 var webaudioManager = null; // The SuperpoweredWebAudio helper class managing Web Audio for us.
 var Superpowered = null; // A Superpowered instance.

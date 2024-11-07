@@ -1,4 +1,4 @@
-import "./Superpowered.js";
+import { SuperpoweredWebAudio } from './../Superpowered.js';
 
 class MyProcessor extends SuperpoweredWebAudio.AudioWorkletProcessor {
     cancelledPitchBend = true;

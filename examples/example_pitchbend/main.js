@@ -1,4 +1,4 @@
-import "./assets/Superpowered.js";
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './Superpowered.js';
 
 var webaudioManager = null; // The SuperpoweredWebAudio helper class managing Web Audio for us.
 var Superpowered = null; // A Superpowered instance.
@@ -135,7 +135,7 @@ function requestPitchBendDetails() {
 async function start() {
     webaudioManager = new SuperpoweredWebAudio(44100, Superpowered);
     currentPath = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-    audioNode = await webaudioManager.createAudioNodeAsync(window.location.href + '/assets/processor.js?date=' + Date.now(), 'MyProcessor', onMessageFromAudioScope);
+    audioNode = await webaudioManager.createAudioNodeAsync(window.location.href + 'assets/processor.js?date=' + Date.now(), 'MyProcessor', onMessageFromAudioScope);
     // audioNode -> audioContext.destination (audio output)
     webaudioManager.audioContext.suspend();
     audioNode.connect(webaudioManager.audioContext.destination);
@@ -144,12 +144,12 @@ async function start() {
     requestAnimationFrame(requestPitchBendDetails)
 }
 
-async function loadFromMainThread() {
+async function loadFromMainThread() {    
     Superpowered.downloadAndDecode(window.location.href + '/assets/track.mp3', audioNode);
 }
 
 async function loadJS() {
-    Superpowered = await SuperpoweredGlue.Instantiate('ExampleLicenseKey-WillExpire-OnNextUpdate', `${window.location.href}/assets/superpowered-npm.wasm`);
+    Superpowered = await SuperpoweredGlue.Instantiate('ExampleLicenseKey-WillExpire-OnNextUpdate');
     
     // display the START button
     content = document.getElementById('content');

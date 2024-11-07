@@ -1,4 +1,4 @@
-import './Superpowered.js';
+import { SuperpoweredGlue, SuperpoweredWebAudio } from './Superpowered.js';
 
 const states = { NOTRUNNING: 'START', INITIALIZING: 'INITIALIZING', RUNNING: 'STOP' }
 
