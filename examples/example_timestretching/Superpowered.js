@@ -5,57 +5,57 @@
 class LinearMemoryBuffer {
     /**@type {number} */pointer;
     /**@type {number} */length;
-    /**@type {number} */#type;
-    /**@type {SuperpoweredGlue} */#glue;
+    /**@type {number} */_type;
+    /**@type {SuperpoweredGlue} */_glue;
     /**@type {Int8Array|Int16Array|Int32Array|BigInt64Array|Uint8Array|Uint16Array|Uint32Array|BigUint64Array|Float32Array|Float64Array} */array;
-    /**@type {any[]}*/ static #types = [ null, Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, BigUint64Array, BigInt64Array, Float32Array, Float64Array ];
+    /**@type {any[]}*/ static _types = [ null, Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, BigUint64Array, BigInt64Array, Float32Array, Float64Array ];
 
     constructor(/**@type {number} */pointer, /**@type {number} */length, /**@type {number} */type, /**@type {SuperpoweredGlue}*/glue) {
         this.length = length;
-        this.#type = type;
-        this.#glue = glue;
-        this.pointer = (pointer == 0) ? glue.malloc(length * LinearMemoryBuffer.#types[this.#type].BYTES_PER_ELEMENT) : pointer;
+        this._type = type;
+        this._glue = glue;
+        this.pointer = (pointer == 0) ? glue.malloc(length * LinearMemoryBuffer._types[this._type].BYTES_PER_ELEMENT) : pointer;
         this.update();
-        this.#glue.addBuffer(this);
+        this._glue.addBuffer(this);
     }
 
     update() {
-        const ab = this.#glue.linearMemory, t = LinearMemoryBuffer.#types[this.#type];
+        const ab = this._glue.linearMemory, t = LinearMemoryBuffer._types[this._type];
         this.array = new t(ab, this.pointer, (this.length < 0) ? Math.floor((ab.byteLength - this.pointer) / t.BYTES_PER_ELEMENT) : this.length);
     }
 
     free() {
-        this.#glue.free(this.pointer);
-        this.#glue.removeBuffer(this);
+        this._glue.free(this.pointer);
+        this._glue.removeBuffer(this);
     }
 }
 
 class SuperpoweredGlue {
-    static wasmCDNUrl = 'https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.7.2/dist/superpowered-npm.wasm';
+    static wasmCDNUrl = 'https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.7.3/dist/superpowered-npm.wasm';
 
     /**@type {number}*/id = Math.floor(Math.random() * Date.now());
     /**@type {ArrayBuffer}*/linearMemory;
     /**@type {ArrayBuffer} */wasmCode;
     /**@type {boolean} */logMemory = true;
 
-    /**@type {Map<number,object>}*/#trackLoaderReceivers = new Map();
-    /**@type {number}*/#nextTrackLoaderReceiverID = 0;
-    /**@type {Map<number,Set<LinearMemoryBuffer>>}*/#buffers = new Map();
-    /**@type {object}*/#classUnderConstruction = null;
-    /**@type {Map<string,Map<string,Function>>}*/#functionsWithNamespace = new Map();
-    /**@type {object}*/#exportsToWASM;
-    /**@type {Uint8Array}*/#memoryGrowArray;
-    /**@type {number}*/#memoryGrowPointer;
-    /**@type {WebAssembly.Instance}*/#wasmInstance;
-    /**@type {string|undefined} */#trackLoaderSource = undefined;
-    /**@type {Function} */#malloc;
-    /**@type {Function} */#free;
-    /**@type {Function} */#heapBase;
-    /**@type {Function} */#stackSize;
-    /**@type {Function} */#lastArrayLength;
-    /**@type {Function} */#setInt64;
-    /**@type {DataView} */#view;
-    /**@type {boolean} */#littleEndian = (new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44);
+    /**@type {Map<number,object>}*/_trackLoaderReceivers = new Map();
+    /**@type {number}*/_nextTrackLoaderReceiverID = 0;
+    /**@type {Map<number,Set<LinearMemoryBuffer>>}*/_buffers = new Map();
+    /**@type {object}*/_classUnderConstruction = null;
+    /**@type {Map<string,Map<string,Function>>}*/_functionsWithNamespace = new Map();
+    /**@type {object}*/_exportsToWASM;
+    /**@type {Uint8Array}*/_memoryGrowArray;
+    /**@type {number}*/_memoryGrowPointer;
+    /**@type {WebAssembly.Instance}*/_wasmInstance;
+    /**@type {string|undefined} */_trackLoaderSource = undefined;
+    /**@type {Function} */_malloc;
+    /**@type {Function} */_free;
+    /**@type {Function} */_heapBase;
+    /**@type {Function} */_stackSize;
+    /**@type {Function} */_lastArrayLength;
+    /**@type {Function} */_setInt64;
+    /**@type {DataView} */_view;
+    /**@type {boolean} */_littleEndian = (new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44);
     
     /**@returns {Promise<SuperpoweredGlue>} */
     static async Instantiate(/**@type {string}*/licenseKey, /**@type {string}*/wasmUrl = SuperpoweredGlue.wasmCDNUrl, /**@type {boolean}*/sharedArrayBuffer = false) {
@@ -69,20 +69,20 @@ class SuperpoweredGlue {
 
     async loadFromArrayBuffer(/**@type {ArrayBuffer}*/wasmCode, /**@type {object}*/afterWASMLoaded = null) {
         this.wasmCode = wasmCode;
-        await WebAssembly.instantiate(wasmCode, { wasi_snapshot_preview1: this.wasi, env: this.#exportsToWASM }).then((result) => {
+        await WebAssembly.instantiate(wasmCode, { wasi_snapshot_preview1: this.wasi, env: this._exportsToWASM }).then((result) => {
             this.setInstance(result.instance);
             if (afterWASMLoaded != null) afterWASMLoaded.afterWASMLoaded();
         });
     }
 
     async loadFromModule(/**@type {BufferSource}*/module) {
-        await WebAssembly.instantiate(module, { wasi_snapshot_preview1: this.wasi, env: this.#exportsToWASM }).then((result) => this.setInstance(result.instance));
+        await WebAssembly.instantiate(module, { wasi_snapshot_preview1: this.wasi, env: this._exportsToWASM }).then((result) => this.setInstance(result.instance));
     }
 
     async loadFromURL(/**@type {string}*/url, /**@type {boolean}*/storeCode = true) {
         const wasmCode = await fetch(url).then(response => response.arrayBuffer());
         if (storeCode) this.wasmCode = wasmCode;
-        await WebAssembly.instantiate(wasmCode, { wasi_snapshot_preview1: this.wasi, env: this.#exportsToWASM }).then((result) => this.setInstance(result.instance));
+        await WebAssembly.instantiate(wasmCode, { wasi_snapshot_preview1: this.wasi, env: this._exportsToWASM }).then((result) => this.setInstance(result.instance));
     }
 
     /**@returns {ArrayBuffer} */
@@ -120,18 +120,18 @@ class SuperpoweredGlue {
         this.BigInt64Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 8, glue); } }
         this.Float32Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 9, glue); } }
         this.Float64Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 10, glue); } }
-        this.#exportsToWASM = {
+        this._exportsToWASM = {
             consolelog: (/**@type {number}*/pointer, /**@type {number}*/strlen) => console.log(this.toString(pointer, strlen)),
-            emscripten_notify_memory_growth: this.#onMemoryGrowth.bind(this),
-            __createClass__: this.#createClass.bind(this),
-            __createStaticProperty__: this.#createStaticProperty.bind(this),
-            __createStaticMethod__: this.#createStaticMethod.bind(this),
+            emscripten_notify_memory_growth: this._onMemoryGrowth.bind(this),
+            __createClass__: this._createClass.bind(this),
+            __createStaticProperty__: this._createStaticProperty.bind(this),
+            __createStaticMethod__: this._createStaticMethod.bind(this),
             __createConstructor__: () => {},
             __createDestructor__: () => {},
-            __createProperty__: this.#createProperty.bind(this),
-            __createMethod__: this.#createMethod.bind(this),
-            __createFunction__: this.#createFunction.bind(this),
-            __createClassConstant__: (/**@type {number}*/nameptr, /**@type {number}*/namelen, /**@type {number}*/value) => this.#classUnderConstruction[this.toString(nameptr, namelen)] = value,
+            __createProperty__: this._createProperty.bind(this),
+            __createMethod__: this._createMethod.bind(this),
+            __createFunction__: this._createFunction.bind(this),
+            __createClassConstant__: (/**@type {number}*/nameptr, /**@type {number}*/namelen, /**@type {number}*/value) => this._classUnderConstruction[this.toString(nameptr, namelen)] = value,
             __createConstant__: (/**@type {number}*/nameptr, /**@type {number}*/namelen, /**@type {number}*/value) => this[this.toString(nameptr, namelen)] = value,
             __runjs__: (/**@type {number}*/pointer) => { return eval(this.toString(pointer)); },
             abs: Math.abs,
@@ -143,24 +143,24 @@ class SuperpoweredGlue {
     }
 
     setInstance(/**@type {WebAssembly.Instance}*/wasmInstance) {
-        this.#wasmInstance = wasmInstance;
-        /**@type {Function}*/(this.#wasmInstance.exports._initialize)();
+        this._wasmInstance = wasmInstance;
+        /**@type {Function}*/(this._wasmInstance.exports._initialize)();
 
-        this.#lastArrayLength = /**@type {Function}*/(this.#wasmInstance.exports.__lastarraylength__);
-        this.#malloc = /**@type {Function}*/(this.#wasmInstance.exports.__malloc__);
-        this.#stackSize = /**@type {Function}*/(this.#wasmInstance.exports.__stacksize__);
-        this.#heapBase = /**@type {Function}*/(this.#wasmInstance.exports.__heapbase__);
-        this.#free = /**@type {Function}*/(this.#wasmInstance.exports.__free__);
-        this.#setInt64 = /**@type {Function}*/(this.#wasmInstance.exports.__setint64__);
+        this._lastArrayLength = /**@type {Function}*/(this._wasmInstance.exports.__lastarraylength__);
+        this._malloc = /**@type {Function}*/(this._wasmInstance.exports.__malloc__);
+        this._stackSize = /**@type {Function}*/(this._wasmInstance.exports.__stacksize__);
+        this._heapBase = /**@type {Function}*/(this._wasmInstance.exports.__heapbase__);
+        this._free = /**@type {Function}*/(this._wasmInstance.exports.__free__);
+        this._setInt64 = /**@type {Function}*/(this._wasmInstance.exports.__setint64__);
 
-        this.linearMemory = this.#wasmInstance.exports.memory['buffer'];
-        this.#view = new DataView(this.linearMemory);
-        this.#memoryGrowPointer = this.#malloc(16);
-        this.#memoryGrowArray = new Uint8Array(this.linearMemory, this.#memoryGrowPointer, 16);
+        this.linearMemory = this._wasmInstance.exports.memory['buffer'];
+        this._view = new DataView(this.linearMemory);
+        this._memoryGrowPointer = this._malloc(16);
+        this._memoryGrowArray = new Uint8Array(this.linearMemory, this._memoryGrowPointer, 16);
     
-        const outputBuffer = this.#malloc(1024), stringview = new Uint8Array(this.linearMemory, this.#malloc(1024), 1024), demangle = /**@type {Function}*/(this.#wasmInstance.exports.__demangle__);
-        for (const name in this.#wasmInstance.exports) if (name != '__demangle__') {
-            const length = demangle(this.toWASMString(name, stringview), outputBuffer), func = /**@type {Function}*/(this.#wasmInstance.exports[name]);
+        const outputBuffer = this._malloc(1024), stringview = new Uint8Array(this.linearMemory, this._malloc(1024), 1024), demangle = /**@type {Function}*/(this._wasmInstance.exports.__demangle__);
+        for (const name in this._wasmInstance.exports) if (name != '__demangle__') {
+            const length = demangle(this.toWASMString(name, stringview), outputBuffer), func = /**@type {Function}*/(this._wasmInstance.exports[name]);
             if (length > 0) {
                 let demangledName = this.toString(outputBuffer, length);
                 const par = demangledName.indexOf('(');
@@ -175,35 +175,35 @@ class SuperpoweredGlue {
                 // class members have namespaces removed from this point, but functions not
                 const split = demangledName.split('::', 2);
                 if (split.length == 2) {
-                    let map = this.#functionsWithNamespace.get(split[0]);
+                    let map = this._functionsWithNamespace.get(split[0]);
                     if (!map) {
                         map = new Map();
-                        this.#functionsWithNamespace.set(split[0], map);
+                        this._functionsWithNamespace.set(split[0], map);
                     }
                     map.set(split[1], func);
                 }
                 this[demangledName] = func;
             } else this[name] = func;
         }
-        this.#free(outputBuffer);
-        this.#free(stringview.byteOffset);
+        this._free(outputBuffer);
+        this._free(stringview.byteOffset);
 
-        /**@type {Function}*/(this.#wasmInstance.exports.__initialize__)();
-        for (const [name, map] of this.#functionsWithNamespace) map.clear();
-        this.#functionsWithNamespace.clear();
-        this.#logMemory();
-        this.#classUnderConstruction = null;
+        /**@type {Function}*/(this._wasmInstance.exports.__initialize__)();
+        for (const [name, map] of this._functionsWithNamespace) map.clear();
+        this._functionsWithNamespace.clear();
+        this._logMemory();
+        this._classUnderConstruction = null;
     }
 
     /**@returns {LinearMemoryBuffer|number|undefined} */
     returnPointerToView(/**@type {number|undefined}*/pointer, /**@type {number}*/type) {
         if ((type < 1) || (pointer == undefined)) return pointer;
-        const length = this.#lastArrayLength();
+        const length = this._lastArrayLength();
         return new LinearMemoryBuffer(pointer, length > 0 ? length : -1, type, this);
     }
 
     /**@returns {LinearMemoryBuffer|number|undefined} */
-    #invokeFunction(/**@type {number}*/pointerToInstance, /**@type {Function} */func, /**@type {number} */returnPointerType) { 
+    _invokeFunction(/**@type {number}*/pointerToInstance, /**@type {Function} */func, /**@type {number} */returnPointerType) { 
         if ((arguments.length == 4) && (typeof arguments[3] == 'object')) {
             const obj = arguments[3]; let n = 0;
             for (const m in obj) arguments[n++] = obj[m];
@@ -227,7 +227,7 @@ class SuperpoweredGlue {
         return this.returnPointerToView(r, returnPointerType);
     }
 
-    #createClass(/**@type {number}*/classnamePointer, /**@type {number}*/classnameLen, /**@type {number}*/sizeofClass) {
+    _createClass(/**@type {number}*/classnamePointer, /**@type {number}*/classnameLen, /**@type {number}*/sizeofClass) {
         const classname = this.toString(classnamePointer, classnameLen), glue = this, O = class {
             /**@type {string} */className = classname;
             /**@type {number} */pointerToInstance;
@@ -238,7 +238,7 @@ class SuperpoweredGlue {
                 this.pointerToInstance = constructorFunction.apply(null, args);
                 const meta = Object.getPrototypeOf(this).constructor.classInfo;
                 for (const property of meta.properties) glue.createPropertyFromDescriptor(this, property);
-                for (const method of meta.methods) this[method.name] = glue.#invokeFunction.bind(glue, this.pointerToInstance, method.function, method.returnPointerType);
+                for (const method of meta.methods) this[method.name] = glue._invokeFunction.bind(glue, this.pointerToInstance, method.function, method.returnPointerType);
             }
 
             destruct() {
@@ -249,44 +249,44 @@ class SuperpoweredGlue {
             }
         }
         O.classInfo = { name: classname, properties: [], methods: [] }
-        this.#classUnderConstruction = this[classname] = O;
-        this.#functionsWithNamespace.delete(classname);
+        this._classUnderConstruction = this[classname] = O;
+        this._functionsWithNamespace.delete(classname);
     }
     
     /**@returns {number|bigint|undefined} */
-    #read(/**@type {number} */pointer, /**@type {number} */type) {
+    _read(/**@type {number} */pointer, /**@type {number} */type) {
         switch (type) {
-            case 1: return this.#view.getUint8(pointer);
-            case 2: return this.#view.getInt8(pointer);
-            case 3: return this.#view.getUint16(pointer, this.#littleEndian);
-            case 4: return this.#view.getInt16(pointer, this.#littleEndian);
-            case 5: return this.#view.getUint32(pointer, this.#littleEndian);
-            case 6: return this.#view.getInt32(pointer, this.#littleEndian);
-            case 7: return this.#view.getBigUint64(pointer, this.#littleEndian);
-            case 8: return this.#view.getBigInt64(pointer, this.#littleEndian);
-            case 9: return this.#view.getFloat32(pointer, this.#littleEndian);
-            case 10: return this.#view.getFloat64(pointer, this.#littleEndian);
+            case 1: return this._view.getUint8(pointer);
+            case 2: return this._view.getInt8(pointer);
+            case 3: return this._view.getUint16(pointer, this._littleEndian);
+            case 4: return this._view.getInt16(pointer, this._littleEndian);
+            case 5: return this._view.getUint32(pointer, this._littleEndian);
+            case 6: return this._view.getInt32(pointer, this._littleEndian);
+            case 7: return this._view.getBigUint64(pointer, this._littleEndian);
+            case 8: return this._view.getBigInt64(pointer, this._littleEndian);
+            case 9: return this._view.getFloat32(pointer, this._littleEndian);
+            case 10: return this._view.getFloat64(pointer, this._littleEndian);
         }
         return undefined;
     }
 
-    #write(/**@type {number} */pointer, /**@type {number} */type, /**@type {number|bigint} */value) {
+    _write(/**@type {number} */pointer, /**@type {number} */type, /**@type {number|bigint} */value) {
         switch (type) {
-            case 1: this.#view.setUint8(pointer, /**@type {number}*/(value)); break;
-            case 2: this.#view.setInt8(pointer, /**@type {number}*/(value)); break;
-            case 3: this.#view.setUint16(pointer, /**@type {number}*/(value), this.#littleEndian); break;
-            case 4: this.#view.setInt16(pointer, /**@type {number}*/(value), this.#littleEndian); break;
-            case 5: this.#view.setUint32(pointer, /**@type {number}*/(value), this.#littleEndian); break;
-            case 6: this.#view.setInt32(pointer, /**@type {number}*/(value), this.#littleEndian); break;
-            case 7: this.#view.setBigUint64(pointer, /**@type {bigint}*/(value), this.#littleEndian); break;
-            case 8: this.#view.setBigInt64(pointer, /**@type {bigint}*/(value), this.#littleEndian); break;
-            case 9: this.#view.setFloat32(pointer, /**@type {number}*/(value), this.#littleEndian); break;
-            case 10: this.#view.setFloat64(pointer, /**@type {number}*/(value), this.#littleEndian); break;
+            case 1: this._view.setUint8(pointer, /**@type {number}*/(value)); break;
+            case 2: this._view.setInt8(pointer, /**@type {number}*/(value)); break;
+            case 3: this._view.setUint16(pointer, /**@type {number}*/(value), this._littleEndian); break;
+            case 4: this._view.setInt16(pointer, /**@type {number}*/(value), this._littleEndian); break;
+            case 5: this._view.setUint32(pointer, /**@type {number}*/(value), this._littleEndian); break;
+            case 6: this._view.setInt32(pointer, /**@type {number}*/(value), this._littleEndian); break;
+            case 7: this._view.setBigUint64(pointer, /**@type {bigint}*/(value), this._littleEndian); break;
+            case 8: this._view.setBigInt64(pointer, /**@type {bigint}*/(value), this._littleEndian); break;
+            case 9: this._view.setFloat32(pointer, /**@type {number}*/(value), this._littleEndian); break;
+            case 10: this._view.setFloat64(pointer, /**@type {number}*/(value), this._littleEndian); break;
         }
     }
         
-    #createProperty(/**@type {number}*/propertynamePointer, /**@type {number}*/propertynameLen, /**@type {number}*/offset, /**@type {number}*/viewType, /**@type {number}*/viewLength) {
-        this.#classUnderConstruction.classInfo.properties.push({ name: this.toString(propertynamePointer, propertynameLen), offset: offset, viewType: viewType,  viewLength: viewLength });
+    _createProperty(/**@type {number}*/propertynamePointer, /**@type {number}*/propertynameLen, /**@type {number}*/offset, /**@type {number}*/viewType, /**@type {number}*/viewLength) {
+        this._classUnderConstruction.classInfo.properties.push({ name: this.toString(propertynamePointer, propertynameLen), offset: offset, viewType: viewType,  viewLength: viewLength });
     }
 
     createPropertyFromDescriptor(/**@type {object}*/object, /**@type {object}*/descriptor) {
@@ -299,31 +299,31 @@ class SuperpoweredGlue {
                 enumerable: true
             }); 
         } else Object.defineProperty(object, descriptor.name, {
-            get: () => { return this.#read(basePointer + descriptor.offset, descriptor.viewType); },
-            set: (value) => { this.#write(basePointer + descriptor.offset, descriptor.viewType, value); },
+            get: () => { return this._read(basePointer + descriptor.offset, descriptor.viewType); },
+            set: (value) => { this._write(basePointer + descriptor.offset, descriptor.viewType, value); },
             configurable: true,
             enumerable: true
         });
     }
 
-    #createStaticProperty(/**@type {number}*/propertynamePointer, /**@type {number}*/propertynameLen, /**@type {number}*/pointer, /**@type {number}*/viewType, /**@type {number}*/viewLength) {
-        this.createPropertyFromDescriptor(this.#classUnderConstruction, { name: this.toString(propertynamePointer, propertynameLen), offset: pointer, viewType: viewType, viewLength: viewLength });
+    _createStaticProperty(/**@type {number}*/propertynamePointer, /**@type {number}*/propertynameLen, /**@type {number}*/pointer, /**@type {number}*/viewType, /**@type {number}*/viewLength) {
+        this.createPropertyFromDescriptor(this._classUnderConstruction, { name: this.toString(propertynamePointer, propertynameLen), offset: pointer, viewType: viewType, viewLength: viewLength });
     }
 
-    #createMethod(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
+    _createMethod(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
         const methodname = this.toString(methodnamePointer, methodnameLen);
-        this.#classUnderConstruction.classInfo.methods.push({ name: methodname, function: this[this.#classUnderConstruction.classInfo.name + '::' + methodname], returnPointerType: returnPointerType });
+        this._classUnderConstruction.classInfo.methods.push({ name: methodname, function: this[this._classUnderConstruction.classInfo.name + '::' + methodname], returnPointerType: returnPointerType });
     }
 
-    #createStaticMethod(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
-        const methodname = this.toString(methodnamePointer, methodnameLen), wasmMethodname = this.#classUnderConstruction.classInfo.name + '::' + methodname;
-        this.#classUnderConstruction[methodname] = this.#invokeFunction.bind(this, 0, this[wasmMethodname], returnPointerType);
+    _createStaticMethod(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
+        const methodname = this.toString(methodnamePointer, methodnameLen), wasmMethodname = this._classUnderConstruction.classInfo.name + '::' + methodname;
+        this._classUnderConstruction[methodname] = this._invokeFunction.bind(this, 0, this[wasmMethodname], returnPointerType);
     }
 
-    #createFunction(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
+    _createFunction(/**@type {number}*/methodnamePointer, /**@type {number}*/methodnameLen, /**@type {number}*/returnPointerType) {
         const methodname = this.toString(methodnamePointer, methodnameLen);
         if (!this[methodname]) { // maybe this function is in a namespace
-            for (const [namespace, map] of this.#functionsWithNamespace) {
+            for (const [namespace, map] of this._functionsWithNamespace) {
                 const method = map.get(methodname);
                 if (method != undefined) {
                     this[methodname] = method;
@@ -333,21 +333,21 @@ class SuperpoweredGlue {
             }
             if (!this[methodname]) return;
         }
-        this[methodname] = this.#invokeFunction.bind(this, 0, this[methodname], returnPointerType);
+        this[methodname] = this._invokeFunction.bind(this, 0, this[methodname], returnPointerType);
     }
 
     exportToWasm(/**@type {string}*/functionName, /**@type {Function}*/f) { 
-        this.#exportsToWASM[functionName] = () => {
+        this._exportsToWASM[functionName] = () => {
             const r = f.apply(f, arguments);
             return (r.array != undefined) ? r.array.byteOffset : r;
         }
     }
     
-    #onMemoryGrowth(/**@type {number}*/n) {
-        this.linearMemory = this.#wasmInstance.exports.memory['buffer'];
-        this.#view = new DataView(this.linearMemory);
-        if (this.#memoryGrowArray.buffer.byteLength < 1) this.#updateMemoryViews();
-        this.#logMemory();
+    _onMemoryGrowth(/**@type {number}*/n) {
+        this.linearMemory = this._wasmInstance.exports.memory['buffer'];
+        this._view = new DataView(this.linearMemory);
+        if (this._memoryGrowArray.buffer.byteLength < 1) this._updateMemoryViews();
+        this._logMemory();
     }
     
     toString(/**@type {number}*/pointer, /**@type {number}*/strlen = 0) {
@@ -424,49 +424,49 @@ class SuperpoweredGlue {
     }
 
     /**@returns {string} */
-    #niceSize(/**@type {number}*/bytes) {
+    _niceSize(/**@type {number}*/bytes) {
         if (bytes == 0) return '0 byte'; else if (bytes == 1) return '1 byte';
         const postfix = [ ' bytes', ' kb', ' mb', ' gb', ' tb' ], n = Math.floor(Math.log(bytes) / Math.log(1024));
         return Math.round(bytes / Math.pow(1024, n)) + postfix[n];
     }
     
-    #logMemory() {
-        if (this.logMemory) console.log('WASM memory ' + this.id + ': ' + this.#niceSize(this.#stackSize()) + ' stack, ' + this.#niceSize(this.linearMemory.byteLength - this.#heapBase()) + ' heap, ' + this.#niceSize(this.linearMemory.byteLength) + ' total.');
+    _logMemory() {
+        if (this.logMemory) console.log('WASM memory ' + this.id + ': ' + this._niceSize(this._stackSize()) + ' stack, ' + this._niceSize(this.linearMemory.byteLength - this._heapBase()) + ' heap, ' + this._niceSize(this.linearMemory.byteLength) + ' total.');
     }
     
     malloc(/**@type {number}*/bytes) {
-        const pointer = this.#malloc(bytes);
-        if (this.#memoryGrowArray.buffer.byteLength < 1) this.#updateMemoryViews();
+        const pointer = this._malloc(bytes);
+        if (this._memoryGrowArray.buffer.byteLength < 1) this._updateMemoryViews();
         return pointer;
     }
     
-    #updateMemoryViews() {
-        for (const [pointer, set] of this.#buffers) for (const buffer of set) buffer.update();
-        this.#memoryGrowArray = new Uint8Array(this.linearMemory, this.#memoryGrowPointer, 16);
+    _updateMemoryViews() {
+        for (const [pointer, set] of this._buffers) for (const buffer of set) buffer.update();
+        this._memoryGrowArray = new Uint8Array(this.linearMemory, this._memoryGrowPointer, 16);
     }
 
     addBuffer(/**@type {LinearMemoryBuffer} */buffer) {
-        const existing = this.#buffers.get(buffer.pointer);
-        if (existing) existing.add(buffer); else this.#buffers.set(buffer.pointer, new Set([ buffer ]));
+        const existing = this._buffers.get(buffer.pointer);
+        if (existing) existing.add(buffer); else this._buffers.set(buffer.pointer, new Set([ buffer ]));
     }
 
     removeBuffer(/**@type {LinearMemoryBuffer} */buffer) {
-        const set = this.#buffers.get(buffer.pointer);
+        const set = this._buffers.get(buffer.pointer);
         if (!set) return; else set.delete(buffer);
-        if (set.size < 1) this.#buffers.delete(buffer.pointer);
+        if (set.size < 1) this._buffers.delete(buffer.pointer);
     }
     
     free(/**@type {number}*/pointer) {
-        const set = this.#buffers.get(pointer);
+        const set = this._buffers.get(pointer);
         if (set) {
             set.clear();
-            this.#buffers.delete(pointer);
+            this._buffers.delete(pointer);
         }
-        this.#free(pointer);
+        this._free(pointer);
     }
     
     setInt64(/**@type {number}*/pointer, /**@type {number}*/index, /**@type {number}*/value) {
-        this.#setInt64(pointer, index, value);
+        this._setInt64(pointer, index, value);
     }
     
     bufferToWASM(/**@type {any}*/buffer, /**@type {any}*/input, /**@type {number}*/index) {
@@ -540,12 +540,12 @@ class SuperpoweredGlue {
     /**@returns {number} */
     registerTrackLoader(/**@type {object}*/receiver) {
         if (typeof receiver.terminate !== 'undefined') receiver.addEventListener('message', this.handleTrackLoaderMessage); // Worker
-        this.#trackLoaderReceivers.set(this.#nextTrackLoaderReceiverID++, (typeof receiver.port !== 'undefined') ? receiver.port : receiver);
-        return this.#nextTrackLoaderReceiverID - 1;
+        this._trackLoaderReceivers.set(this._nextTrackLoaderReceiverID++, (typeof receiver.port !== 'undefined') ? receiver.port : receiver);
+        return this._nextTrackLoaderReceiverID - 1;
     }
 
-    removeTrackLoader(/**@type {number} */trackLoaderID) { this.#trackLoaderReceivers.delete(trackLoaderID); }
-    /**@returns {number} */nextTrackLoaderID() { return this.#nextTrackLoaderReceiverID; }
+    removeTrackLoader(/**@type {number} */trackLoaderID) { this._trackLoaderReceivers.delete(trackLoaderID); }
+    /**@returns {number} */nextTrackLoaderID() { return this._nextTrackLoaderReceiverID; }
     
     handleTrackLoaderMessage(/**@type {MessageEvent}*/message) {
         if (typeof message.data.SuperpoweredLoad !== 'string') return false;
@@ -554,8 +554,8 @@ class SuperpoweredGlue {
     }
     
     async loadTrackInWorker(/**@type {string}*/url, /**@type {number}*/trackLoaderID) {   
-        if (this.#trackLoaderSource == undefined) this.#trackLoaderSource = URL.createObjectURL(new Blob([ SuperpoweredGlue.toString() + "\r\n\r\nonmessage = SuperpoweredGlue.loaderWorkerOnmessage;" + `\r\n\r\nSuperpoweredGlue.wasmCDNUrl = "${SuperpoweredGlue.wasmCDNUrl}";` ], { type: 'application/javascript' }));
-        const trackLoaderWorker = new Worker(this.#trackLoaderSource);
+        if (this._trackLoaderSource == undefined) this._trackLoaderSource = URL.createObjectURL(new Blob([ SuperpoweredGlue.toString() + "\r\n\r\nonmessage = SuperpoweredGlue.loaderWorkerOnmessage;" + `\r\n\r\nSuperpoweredGlue.wasmCDNUrl = "${SuperpoweredGlue.wasmCDNUrl}";` ], { type: 'application/javascript' }));
+        const trackLoaderWorker = new Worker(this._trackLoaderSource);
         trackLoaderWorker['__url__'] = url;
         trackLoaderWorker['trackLoaderID'] = trackLoaderID;    
         trackLoaderWorker.onmessage = (/**@type {MessageEvent}*/message) => this.transferLoadedTrack(message.data.__transfer__, trackLoaderWorker);
@@ -564,7 +564,7 @@ class SuperpoweredGlue {
     }
     
     transferLoadedTrack(/**@type {ArrayBuffer}*/arrayBuffer,/**@type {Worker} */trackLoaderWorker) {
-        const receiver = this.#trackLoaderReceivers.get(trackLoaderWorker['trackLoaderID']); 
+        const receiver = this._trackLoaderReceivers.get(trackLoaderWorker['trackLoaderID']); 
         if (receiver == undefined) return;
         if (typeof receiver.postMessage === 'function') receiver.postMessage({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker['__url__'] }}, [ arrayBuffer ]);
         else receiver({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker['__url__'] }});
