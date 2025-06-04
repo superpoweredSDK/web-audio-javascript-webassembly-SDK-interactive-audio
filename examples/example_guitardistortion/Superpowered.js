@@ -31,7 +31,7 @@ class LinearMemoryBuffer {
 }
 
 class SuperpoweredGlue {
-    static wasmCDNUrl = 'https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.7.3/dist/superpowered-npm.wasm';
+    static wasmCDNUrl = 'https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.7.4/dist/superpowered-npm.wasm';
 
     /**@type {number}*/id = Math.floor(Math.random() * Date.now());
     /**@type {ArrayBuffer}*/linearMemory;
