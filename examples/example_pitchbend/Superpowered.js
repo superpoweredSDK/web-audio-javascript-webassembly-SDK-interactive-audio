@@ -31,7 +31,7 @@ class LinearMemoryBuffer {
 }
 
 class SuperpoweredGlue {
-    static wasmCDNUrl = 'https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.7.4/dist/superpowered-npm.wasm';
+    static wasmCDNUrl = 'https://cdn.jsdelivr.net/npm/@superpoweredsdk/web@2.7.5/dist/superpowered-npm.wasm';
 
     /**@type {number}*/id = Math.floor(Math.random() * Date.now());
     /**@type {ArrayBuffer}*/linearMemory;
@@ -584,10 +584,16 @@ class SuperpoweredWebAudio {
     /**@type {object} */Superpowered;
     /**@type {AudioContext} */audioContext;
 
-    constructor(/**@type {number}*/minimumSamplerate, /**@type {object}*/superpowered) {
+    constructor(/**@type {number}*/minimumSamplerate, /**@type {object}*/superpowered, /**@type {AudioContext}*/audioContext) {
         this.Superpowered = superpowered;
-        this.audioContext = new AudioContext();
+        if (audioContext && !(audioContext instanceof AudioContext)) {
+            throw new Error('Invalid AudioContext provided to SuperpoweredWebAudio constructor.');
+        }
+        this.audioContext = audioContext ?? new AudioContext();
         if (this.audioContext.sampleRate < minimumSamplerate) {
+            if (audioContext) {
+                throw new Error(`The provided AudioContext has a sample rate of ${this.audioContext.sampleRate}, but the minimum required sample rate is ${minimumSamplerate}.`);
+            }
             this.audioContext.close();
             this.audioContext = new AudioContext({ sampleRate: minimumSamplerate });
         }
