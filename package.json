@@ -1,6 +1,6 @@
 {
   "name": "@superpoweredsdk/web",
-  "version": "2.7.5",
+  "version": "2.7.6",
   "description": "Superpowered interactive audio features in JavaScript + WebAssembly.",
   "main": "dist/Superpowered.js",
   "browser": "dist/Superpowered.js",
