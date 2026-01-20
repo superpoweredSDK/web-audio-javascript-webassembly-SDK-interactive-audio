@@ -56,7 +56,7 @@ class SuperpoweredGlue {
     /**@type {Function} */_setInt64;
     /**@type {DataView} */_view;
     /**@type {boolean} */_littleEndian = (new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44);
-
+    
     /**@returns {Promise<SuperpoweredGlue>} */
     static async Instantiate(/**@type {string}*/licenseKey, /**@type {string}*/wasmUrl = SuperpoweredGlue.wasmCDNUrl, /**@type {boolean}*/sharedArrayBuffer = false) {
         SuperpoweredGlue.wasmCDNUrl = wasmUrl;
@@ -107,8 +107,8 @@ class SuperpoweredGlue {
         }
         return result.buffer;
     }
-
-    constructor() {
+    
+    constructor() {    
         const glue = this;
         this.Uint8Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 1, glue); } }
         this.Int8Buffer = class { constructor(/**@type {number}*/length) { return new LinearMemoryBuffer(0, length, 2, glue); } }
@@ -157,7 +157,7 @@ class SuperpoweredGlue {
         this._view = new DataView(this.linearMemory);
         this._memoryGrowPointer = this._malloc(16);
         this._memoryGrowArray = new Uint8Array(this.linearMemory, this._memoryGrowPointer, 16);
-
+    
         const outputBuffer = this._malloc(1024), stringview = new Uint8Array(this.linearMemory, this._malloc(1024), 1024), demangle = /**@type {Function}*/(this._wasmInstance.exports.__demangle__);
         for (const name in this._wasmInstance.exports) if (name != '__demangle__') {
             const length = demangle(this.toWASMString(name, stringview), outputBuffer), func = /**@type {Function}*/(this._wasmInstance.exports[name]);
@@ -203,13 +203,13 @@ class SuperpoweredGlue {
     }
 
     /**@returns {LinearMemoryBuffer|number|undefined} */
-    _invokeFunction(/**@type {number}*/pointerToInstance, /**@type {Function} */func, /**@type {number} */returnPointerType) {
+    _invokeFunction(/**@type {number}*/pointerToInstance, /**@type {Function} */func, /**@type {number} */returnPointerType) { 
         if ((arguments.length == 4) && (typeof arguments[3] == 'object')) {
             const obj = arguments[3]; let n = 0;
             for (const m in obj) arguments[n++] = obj[m];
             arguments.length = n;
         }
-
+        
         const strings = [], args = [], to = arguments.length;
         if (pointerToInstance != 0) args.push(pointerToInstance);
         for (let index = 3; index < to; index++) {
@@ -234,7 +234,7 @@ class SuperpoweredGlue {
 
             constructor() {
                 const constructorFunction = glue[classname + '::' + classname], args = [].slice.call(arguments);
-                if (constructorFunction == undefined) throw classname + ' has no constructor'; else args.unshift(glue.malloc(sizeofClass));
+                if (constructorFunction == undefined) throw classname + ' has no constructor'; else args.unshift(glue.malloc(sizeofClass)); 
                 this.pointerToInstance = constructorFunction.apply(null, args);
                 const meta = Object.getPrototypeOf(this).constructor.classInfo;
                 for (const property of meta.properties) glue.createPropertyFromDescriptor(this, property);
@@ -252,7 +252,7 @@ class SuperpoweredGlue {
         this._classUnderConstruction = this[classname] = O;
         this._functionsWithNamespace.delete(classname);
     }
-
+    
     /**@returns {number|bigint|undefined} */
     _read(/**@type {number} */pointer, /**@type {number} */type) {
         switch (type) {
@@ -284,7 +284,7 @@ class SuperpoweredGlue {
             case 10: this._view.setFloat64(pointer, /**@type {number}*/(value), this._littleEndian); break;
         }
     }
-
+        
     _createProperty(/**@type {number}*/propertynamePointer, /**@type {number}*/propertynameLen, /**@type {number}*/offset, /**@type {number}*/viewType, /**@type {number}*/viewLength) {
         this._classUnderConstruction.classInfo.properties.push({ name: this.toString(propertynamePointer, propertynameLen), offset: offset, viewType: viewType,  viewLength: viewLength });
     }
@@ -297,7 +297,7 @@ class SuperpoweredGlue {
                 get: function() { return buffer.array; },
                 configurable: true,
                 enumerable: true
-            });
+            }); 
         } else Object.defineProperty(object, descriptor.name, {
             get: () => { return this._read(basePointer + descriptor.offset, descriptor.viewType); },
             set: (value) => { this._write(basePointer + descriptor.offset, descriptor.viewType, value); },
@@ -336,20 +336,20 @@ class SuperpoweredGlue {
         this[methodname] = this._invokeFunction.bind(this, 0, this[methodname], returnPointerType);
     }
 
-    exportToWasm(/**@type {string}*/functionName, /**@type {Function}*/f) {
+    exportToWasm(/**@type {string}*/functionName, /**@type {Function}*/f) { 
         this._exportsToWASM[functionName] = () => {
             const r = f.apply(f, arguments);
             return (r.array != undefined) ? r.array.byteOffset : r;
         }
     }
-
+    
     _onMemoryGrowth(/**@type {number}*/n) {
         this.linearMemory = this._wasmInstance.exports.memory['buffer'];
         this._view = new DataView(this.linearMemory);
         if (this._memoryGrowArray.buffer.byteLength < 1) this._updateMemoryViews();
         this._logMemory();
     }
-
+    
     toString(/**@type {number}*/pointer, /**@type {number}*/strlen = 0) {
         let view = null;
         if (strlen < 1) {
@@ -357,11 +357,11 @@ class SuperpoweredGlue {
             view = new Uint8Array(this.linearMemory, pointer, viewLength);
             for (strlen = 0; strlen < viewLength; strlen++) if (view[strlen] == 0) break;
         } else view = new Uint8Array(this.linearMemory, pointer, strlen);
-
+    
         let str = '', i = 0, bytesNeeded, codePoint, octet;
         while (i < strlen) {
             octet = view[i];
-
+            
             if (octet <= 0x7f) {
                 bytesNeeded = 0;
                 codePoint = octet & 0xff;
@@ -375,27 +375,27 @@ class SuperpoweredGlue {
                 bytesNeeded = 3;
                 codePoint = octet & 0x07;
             } else bytesNeeded = codePoint = 0;
-
+    
             if (strlen - i - bytesNeeded > 0) {
                 for (let k = 0; k < bytesNeeded; k++) codePoint = (codePoint << 6) | (view[i + k + 1] & 0x3f);
             } else {
                 codePoint = 0xfffd;
                 bytesNeeded = strlen - i;
             }
-
+    
             str += String.fromCodePoint(codePoint);
             i += bytesNeeded + 1;
         }
         return str;
     }
-
+    
     toWASMString(/**@type {string} */str, /**@type {Uint8Array|undefined}*/view) {
         const length = str.length, maxBytes = length * 4 + 1;
         let i = 0, c, bits, destination = 0, codePoint;
         if (view == undefined) view = new Uint8Array(this.linearMemory, this.malloc(maxBytes), maxBytes);
         while (i < length) {
             codePoint = str.codePointAt(i) ?? 0;
-
+    
             if (codePoint <= 0x0000007f) {
                 c = 0;
                 bits = 0x00;
@@ -409,7 +409,7 @@ class SuperpoweredGlue {
                 c = 18;
                 bits = 0xf0;
             } else c = bits = 0;
-
+    
             view[destination++] = bits | (codePoint >> c);
             c -= 6;
             while (c >= 0) {
@@ -418,7 +418,7 @@ class SuperpoweredGlue {
             }
             i += (codePoint >= 0x10000) ? 2 : 1;
         }
-
+    
         view[destination] = 0;
         return view.byteOffset;
     }
@@ -429,17 +429,17 @@ class SuperpoweredGlue {
         const postfix = [ ' bytes', ' kb', ' mb', ' gb', ' tb' ], n = Math.floor(Math.log(bytes) / Math.log(1024));
         return Math.round(bytes / Math.pow(1024, n)) + postfix[n];
     }
-
+    
     _logMemory() {
         if (this.logMemory) console.log('WASM memory ' + this.id + ': ' + this._niceSize(this._stackSize()) + ' stack, ' + this._niceSize(this.linearMemory.byteLength - this._heapBase()) + ' heap, ' + this._niceSize(this.linearMemory.byteLength) + ' total.');
     }
-
+    
     malloc(/**@type {number}*/bytes) {
         const pointer = this._malloc(bytes);
         if (this._memoryGrowArray.buffer.byteLength < 1) this._updateMemoryViews();
         return pointer;
     }
-
+    
     _updateMemoryViews() {
         for (const [pointer, set] of this._buffers) for (const buffer of set) buffer.update();
         this._memoryGrowArray = new Uint8Array(this.linearMemory, this._memoryGrowPointer, 16);
@@ -455,7 +455,7 @@ class SuperpoweredGlue {
         if (!set) return; else set.delete(buffer);
         if (set.size < 1) this._buffers.delete(buffer.pointer);
     }
-
+    
     free(/**@type {number}*/pointer) {
         const set = this._buffers.get(pointer);
         if (set) {
@@ -464,11 +464,11 @@ class SuperpoweredGlue {
         }
         this._free(pointer);
     }
-
+    
     setInt64(/**@type {number}*/pointer, /**@type {number}*/index, /**@type {number}*/value) {
         this._setInt64(pointer, index, value);
     }
-
+    
     bufferToWASM(/**@type {any}*/buffer, /**@type {any}*/input, /**@type {number}*/index) {
         let inBufferL = null, inBufferR = null;
         if (index === undefined) index = 0;
@@ -485,7 +485,7 @@ class SuperpoweredGlue {
             arr[n] = inBufferR[i];
         }
     }
-
+    
     bufferToJS(/**@type {any}*/buffer, /**@type {any}*/output, /**@type {number}*/index) {
         let outBufferL = null, outBufferR = null;
         if (index === undefined) index = 0;
@@ -502,25 +502,25 @@ class SuperpoweredGlue {
             outBufferR[i] = arr[n];
         }
     }
-
+    
     arrayBufferToWASM(/**@type {ArrayBuffer}*/arrayBuffer, /**@type {number}*/offset = 0) {
         const pointer = this.malloc(arrayBuffer.byteLength + offset);
         new Uint8Array(this.linearMemory).set(new Uint8Array(arrayBuffer, 0, arrayBuffer.byteLength), pointer + offset);
         return pointer;
     }
-
+    
     copyWASMToArrayBuffer(/**@type {number}*/pointer, /**@type {number}*/lengthBytes) {
         const arrayBuffer = new ArrayBuffer(lengthBytes);
         new Uint8Array(arrayBuffer, 0, lengthBytes).set(new Uint8Array(this.linearMemory, pointer, lengthBytes));
         return arrayBuffer;
     }
-
+    
     moveWASMToArrayBuffer(/**@type {number}*/pointer, /**@type {number}*/lengthBytes) {
         const arrayBuffer = this.copyWASMToArrayBuffer(pointer, lengthBytes);
         this.free(pointer);
         return arrayBuffer;
     }
-
+    
     static async loaderWorkerMain(/**@type {string}*/url) {
         SuperpoweredGlue['__uint_max__sp__'] = 255;
         const Superpowered = await SuperpoweredGlue.Instantiate('');
@@ -532,11 +532,11 @@ class SuperpoweredGlue {
             postMessage({ '__transfer__': arrayBuffer, }, [ arrayBuffer ]);
         });
     }
-
+    
     static loaderWorkerOnmessage(/**@type {MessageEvent}*/message) {
         if (typeof message.data.load === 'string') SuperpoweredGlue.loaderWorkerMain(message.data.load);
     }
-
+    
     /**@returns {number} */
     registerTrackLoader(/**@type {object}*/receiver) {
         if (typeof receiver.terminate !== 'undefined') receiver.addEventListener('message', this.handleTrackLoaderMessage); // Worker
@@ -546,31 +546,31 @@ class SuperpoweredGlue {
 
     removeTrackLoader(/**@type {number} */trackLoaderID) { this._trackLoaderReceivers.delete(trackLoaderID); }
     /**@returns {number} */nextTrackLoaderID() { return this._nextTrackLoaderReceiverID; }
-
+    
     handleTrackLoaderMessage(/**@type {MessageEvent}*/message) {
         if (typeof message.data.SuperpoweredLoad !== 'string') return false;
         this.loadTrackInWorker(message.data.SuperpoweredLoad, message.data.trackLoaderID);
         return true;
     }
-
-    async loadTrackInWorker(/**@type {string}*/url, /**@type {number}*/trackLoaderID) {
+    
+    async loadTrackInWorker(/**@type {string}*/url, /**@type {number}*/trackLoaderID) {   
         if (this._trackLoaderSource == undefined) this._trackLoaderSource = URL.createObjectURL(new Blob([ SuperpoweredGlue.toString() + "\r\n\r\nonmessage = SuperpoweredGlue.loaderWorkerOnmessage;" + `\r\n\r\nSuperpoweredGlue.wasmCDNUrl = "${SuperpoweredGlue.wasmCDNUrl}";` ], { type: 'application/javascript' }));
         const trackLoaderWorker = new Worker(this._trackLoaderSource);
         trackLoaderWorker['__url__'] = url;
-        trackLoaderWorker['trackLoaderID'] = trackLoaderID;
+        trackLoaderWorker['trackLoaderID'] = trackLoaderID;    
         trackLoaderWorker.onmessage = (/**@type {MessageEvent}*/message) => this.transferLoadedTrack(message.data.__transfer__, trackLoaderWorker);
         if ((typeof window !== 'undefined') && (typeof window.location !== 'undefined') && (typeof window.location.origin !== 'undefined')) url = new URL(url, window.location.origin).toString();
         trackLoaderWorker.postMessage({ load: url });
     }
-
+    
     transferLoadedTrack(/**@type {ArrayBuffer}*/arrayBuffer,/**@type {Worker} */trackLoaderWorker) {
-        const receiver = this._trackLoaderReceivers.get(trackLoaderWorker['trackLoaderID']);
+        const receiver = this._trackLoaderReceivers.get(trackLoaderWorker['trackLoaderID']); 
         if (receiver == undefined) return;
         if (typeof receiver.postMessage === 'function') receiver.postMessage({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker['__url__'] }}, [ arrayBuffer ]);
         else receiver({ SuperpoweredLoaded: { buffer: arrayBuffer, url: trackLoaderWorker['__url__'] }});
         trackLoaderWorker.terminate();
     }
-
+    
     downloadAndDecode(/**@type {string}*/url, /**@type {object}*/obj) {
         if (obj.trackLoaderID === undefined) return;
         if ((typeof obj.onMessageFromMainScope === 'function') && (typeof obj.sendMessageToMainScope === 'function')) obj.sendMessageToMainScope({ SuperpoweredLoad: url, trackLoaderID: obj.trackLoaderID });
@@ -683,7 +683,7 @@ if (typeof AudioWorkletProcessor === 'function') {
         constructor(/**@type {object}*/options) {
             super();
             SuperpoweredGlue['__uint_max__sp__'] = options.processorOptions.maxChannels;
-            this.trackLoaderID = options.processorOptions.trackLoaderID;
+            this.trackLoaderID = options.processorOptions.trackLoaderID; 
             this.state = 0;
             //@ts-ignore
             this.port.onmessage = (/**@type {MessageEvent}*/event) => {
@@ -722,7 +722,7 @@ if (typeof AudioWorkletProcessor === 'function') {
                     else this.Superpowered['memorySet'](this.inputBuffers[n].pointer, 0, 128 * 8);
                 }
                 this.processAudio(
-                    (this.numberOfInputs == 1) ? this.inputBuffers[0] : this.inputBuffers,
+                    (this.numberOfInputs == 1) ? this.inputBuffers[0] : this.inputBuffers, 
                     (this.numberOfOutputs == 1) ? this.outputBuffers[0] : this.outputBuffers,
                     128,
                     parameters
