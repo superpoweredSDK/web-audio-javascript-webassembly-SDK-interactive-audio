@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script type="module" src="/static/js/main-thread-application.js"></script>
+    <title>Superpowered SAB example</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background-image: url("/static/images/wave.svg");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        height: 100vh;
+        max-width: 900px;
+        margin: 0 auto;
+      }
+
+      button {
+        padding: 8px 16px;
+        font-size: 1em;
+        cursor: pointer;
+      }
+
+      h2 {
+        font-size: 1.1em;
+      }
+
+      footer {
+        padding: 16px;
+        text-align: center;
+      }
+
+      .info {
+        padding: 16px;
+        background: #ffffff;
+        padding: 10px;
+        border-radius: 10px;
+        text-align: center;
+      }
+
+      .buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 20px 0;
+      }
+
+      .asset {
+        text-align: center;
+        /* overflow: hidden; */
+        font-size:10px;
+        /* max-width: 20%; */
+      }
+
+      .container {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        flex-grow: 1;
+        gap: 10px;
+      }
+
+      .column {
+        background: #fff;
+        border-radius: 10px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        align-items: center;
+        justify-content: space-between;
+        border-right: 1px solid #ddd;
+      }
+
+
+    </style>
+  </head>
+  <body>
+     <img
+        src="/static/images/superpowered.svg"
+        alt="Superpowered Logo"
+        style="height: 40px; vertical-align: middle; margin-right: 10px"
+      />
+    <div class="info">
+     
+      <h1>AdvancedAudioPlayer with Shared Array Buffer</h1>
+      <p>
+        This example demonstrates how you can load audio from various threads
+        while playback is in progress. Memory is allocated upfront using a
+        Shared Array Buffer (SAB) to enable efficient audio data sharing between
+        threads. This allows for seamless audio playback without interruptions, even when loading new audio assets from the main thread, audio thread, or a Worker.
+      </p>
+      <p>
+        This feature is available from Superpowered v2.8.0 and requires modern
+        browsers that support Shared Array Buffers.
+      </p>
+    </div>
+
+    <div class="container">
+      <div class="column">
+        <h2>AdvancedAudioPlayer 1</h2>
+        <div class="asset">
+          <div><span>Loaded asset</span></div>
+          <div><span id="loaded-asset-0">None</span></div>
+        </div>
+
+        <div class="buttons">
+          <button
+            onclick="
+              loadFromMainThread(
+                0,
+                'http://localhost:8000/static/audio/cdk.mp3',
+              )
+            "
+          >
+            Load from main thread
+          </button>
+          <button
+            onclick="
+              loadFromAudioThread(
+                0,
+                'http://localhost:8000/static/audio/tone.mp3',
+              )
+            "
+          >
+            Load from audio thread
+          </button>
+          <button
+            onclick="
+              loadFromWorker(0, 'http://localhost:8000/static/audio/tone2.mp3')
+            "
+          >
+            Load from Worker
+          </button>
+        </div>
+
+        <div>
+          <button onclick="playPlayer(0)">Play</button>
+          <button onclick="pausePlayer(0)">Pause</button>
+        </div>
+      </div>
+      <div class="column">
+        <h2>AdvancedAudioPlayer 2</h2>
+        <div class="asset">
+          <div><span>Loaded asset</span></div>
+          <div><span id="loaded-asset-1">None</span></div>
+        </div>
+        <div class="buttons">
+          <button
+            onclick="
+              loadFromMainThread(
+                1,
+                'http://localhost:8000/static/audio/fashion-is-my-life.mp3',
+              )
+            "
+          >
+            Load from main thread
+          </button>
+          <button
+            onclick="
+              loadFromAudioThread(
+                1,
+                'http://localhost:8000/static/audio/tone.mp3',
+              )
+            "
+          >
+            Load from audio thread
+          </button>
+          <button
+            onclick="
+              loadFromWorker(1, 'http://localhost:8000/static/audio/tone2.mp3')
+            "
+          >
+            Load from Worker
+          </button>
+        </div>
+        <div>
+          <button onclick="playPlayer(1)">Play</button>
+          <button onclick="pausePlayer(1)">Pause</button>
+        </div>
+      </div>
+      <div class="column">
+        <h2>AdvancedAudioPlayer 3</h2>
+        <div class="asset">
+          <div><span>Loaded asset</span></div>
+          <div><span id="loaded-asset-2">None</span></div>
+        </div>
+        <div class="buttons">
+          <button
+            onclick="
+              loadFromMainThread(
+                2,
+                'http://localhost:8000/static/audio/tropical-breeze.mp3',
+              )
+            "
+          >
+            Load from main thread
+          </button>
+          <button
+            onclick="
+              loadFromAudioThread(
+                2,
+                'http://localhost:8000/static/audio/tone.mp3',
+              )
+            "
+          >
+            Load from audio thread
+          </button>
+          <button
+            onclick="
+              loadFromWorker(2, 'http://localhost:8000/static/audio/tone2.mp3')
+            "
+          >
+            Load from Worker
+          </button>
+        </div>
+        <div>
+          <button onclick="playPlayer(2)">Play</button>
+          <button onclick="pausePlayer(2)">Pause</button>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <button onclick="playAll()">Play all three players</button>
+      <button onclick="pauseAll()">Pause all players</button>
+    </footer>
+  </body>
+</html>
