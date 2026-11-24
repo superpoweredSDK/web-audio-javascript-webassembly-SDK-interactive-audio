@@ -1,3 +1,5 @@
+Superpowered is sunsetting. Check out Yuby for your low-latency audio: https://yuby.com
+
 <p align="center"><img width="450" src="https://superpowered.com/images/logo.png"></p>
 
 Superpowered Inc develops the Superpowered Web Audio JavaScript and WebAssembly SDK ("JS/WASM SDK") for modern web browsers, websites, progressive web apps and more.
